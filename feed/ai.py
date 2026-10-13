@@ -125,12 +125,49 @@ def similarity_score(text1, text2):
     return cosine(emb1, emb2)
 
 
+def top_similar(query_embedding, candidates, top_k=10, threshold=None):
+    """Retourne les (pk, score) les plus similaires au-dessus d'un seuil."""
+    model = query_embedding.get("model") if query_embedding else None
+    if threshold is None and model:
+        threshold = semantic_threshold(model)
+    scored = []
+    for candidate in candidates:
+        emb = candidate.get("embedding") if isinstance(candidate, dict) else getattr(candidate, "embedding", None)
+        pk = candidate.get("pk") if isinstance(candidate, dict) else getattr(candidate, "pk", None)
+        if not emb or not pk:
+            continue
+        score = cosine(query_embedding, emb)
+        if threshold is None or score >= threshold:
+            scored.append((score, pk))
+    scored.sort(reverse=True)
+    return scored[:top_k]
+
+
+def deduplicate_similar(texts, threshold=0.85):
+    """Déduplique une liste de textes par similarité sémantique."""
+    if not texts:
+        return []
+    embeddings = [embed_text_cached(t) for t in texts]
+    kept = []
+    kept_embs = []
+    for text, emb in zip(texts, embeddings):
+        is_dup = False
+        for kept_emb in kept_embs:
+            if cosine(emb, kept_emb) >= threshold:
+                is_dup = True
+                break
+        if not is_dup:
+            kept.append(text)
+            kept_embs.append(emb)
+    return kept
+
+
 def publication_corpus(publication):
     """Texte servant à l'embedding : texte, descriptions d'images, transcription, tags."""
-    parts = [publication.text]
-    parts += [getattr(image, 'description_ia', None) or getattr(image, 'alt_text', None) for image in publication.images.all()]
+    parts = [getattr(publication, 'text', None)]
+    parts += [getattr(image, 'description_ia', None) or getattr(image, 'alt_text', None) for image in getattr(publication, 'images', []).all()]
     audio = getattr(publication, 'audio_or_none', None)
     if audio is not None:
         parts.append(getattr(audio, 'transcription', None))
-    parts += [tag.name for tag in publication.tags.all()]
+    parts += [tag.name for tag in getattr(publication, 'tags', []).all()]
     return "\n".join(part for part in parts if part)
