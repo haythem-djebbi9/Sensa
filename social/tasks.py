@@ -8,6 +8,15 @@ from enrichment.runner import StepResult, ensure_analysis, run_step
 from . import ai
 from .models import Commentaire, Notification
 
+# Priorité de la notification selon le ton du commentaire : les échanges
+# positifs remontent, les tons négatifs ou agressifs passent après.
+TONE_PRIORITY = {
+    "positive": Notification.Priority.HIGH,
+    "neutral": Notification.Priority.NORMAL,
+    "negative": Notification.Priority.LOW,
+    "aggressive": Notification.Priority.LOW,
+}
+
 
 @shared_task(name="social.analyse_tone")
 def analyse_tone(comment_id):
