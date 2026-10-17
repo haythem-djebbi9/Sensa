@@ -5,6 +5,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
 from django.urls import reverse
 
+from accounts.models import Membre
 from core.testing import SensaTestCase, make_member
 from publications.models import Publication
 
@@ -12,6 +13,7 @@ from .ai import quick_tone
 from .consumers import NotificationConsumer
 from .models import Abonnement, Commentaire, Notification, Reaction
 from .services import group_name
+from .tasks import TONE_PRIORITY
 
 
 class FollowLikeTests(SensaTestCase):
@@ -160,6 +162,26 @@ class NotificationViewsTests(SensaTestCase):
         self.assertEqual(follow.title, "maya vous suit désormais")
         self.assertEqual(follow.icon, ("user", "mint"))
         self.assertEqual(ready.icon, ("spark", "ai"))
+
+
+class CommentModerationTests(SensaTestCase):
+    def setUp(self):
+        self.post_author = make_member("maya")
+        self.commenter = make_member("lina")
+        self.moderator = make_member("camille", role=Membre.Role.MODERATEUR)
+        self.post = Publication.objects.create(author=self.post_author, text="Chanson", status=Publication.Status.READY)
+        self.comment = Commentaire.objects.create(publication=self.post, author=self.commenter, text="Merci")
+
+    def test_moderator_can_delete_any_comment(self):
+        self.assertTrue(self.comment.can_delete(self.moderator))
+
+    def test_anonymous_cannot_delete_a_comment(self):
+        self.assertFalse(self.comment.can_delete(AnonymousUser()))
+
+    def test_tone_priority_covers_every_tone(self):
+        self.assertEqual(set(TONE_PRIORITY), set(Commentaire.Tone.values))
+        self.assertEqual(TONE_PRIORITY["positive"], Notification.Priority.HIGH)
+        self.assertEqual(TONE_PRIORITY["aggressive"], Notification.Priority.LOW)
 
 
 class WebsocketTests(TestCase):
