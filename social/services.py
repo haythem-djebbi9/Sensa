@@ -7,7 +7,7 @@ from channels.layers import get_channel_layer
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 
-from .models import Notification, Reaction
+from .models import Abonnement, Notification, Reaction
 
 logger = logging.getLogger("sensa")
 
@@ -65,6 +65,16 @@ def notify(recipient, notif_type, *, actor=None, publication=None, commentaire=N
     )
     transaction.on_commit(lambda: push_notification(notification))
     return notification
+
+
+def toggle_follow(follower, followed):
+    """Abonne `follower` à `followed`, ou retire l'abonnement ; renvoie True si suivi."""
+    existing = Abonnement.objects.filter(follower=follower, followed=followed)
+    if existing.exists():
+        existing.delete()
+        return False
+    Abonnement.objects.create(follower=follower, followed=followed)
+    return True
 
 
 def annotate_social(queryset, user):

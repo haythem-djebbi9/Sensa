@@ -14,7 +14,7 @@ from publications.models import Publication
 
 from .ai import quick_tone
 from .models import Abonnement, Commentaire, Notification, Reaction
-from .services import notify
+from .services import notify, toggle_follow
 from .tasks import analyse_tone
 
 
@@ -37,14 +37,9 @@ def follow_toggle(request, username):
     if target == request.user:
         messages.error(request, "Vous ne pouvez pas vous suivre vous-même.")
         return redirect(target)
-    existing = Abonnement.objects.filter(follower=request.user, followed=target)
-    if existing.exists():
-        existing.delete()
-        following = False
-    else:
-        Abonnement.objects.create(follower=request.user, followed=target)
+    following = toggle_follow(request.user, target)
+    if following:
         notify(target, Notification.Type.FOLLOW, actor=request.user)
-        following = True
     if _wants_json(request):
         return JsonResponse({"following": following, "followers": target.followers.count()})
     return redirect(safe_next(request, target.get_absolute_url()))
