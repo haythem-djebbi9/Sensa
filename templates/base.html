@@ -1,0 +1,29 @@
+{% load static sensa_tags %}<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}Sensa{% endblock %} · Sensa</title>
+  <meta name="description" content="Sensa — le réseau social où l'IA rend chaque contenu accessible : texte, image et audio dans un même post.">
+  <meta name="theme-color" content="#5b3df5">
+  <link rel="icon" href="{% static 'img/favicon.svg' %}" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Poppins:wght@600;700&display=swap">
+  <link rel="stylesheet" href="{% static 'css/sensa.css' %}">
+  {% block head %}{% endblock %}
+</head>
+<body data-search-url="{% url 'feed:search' %}"{% if user.is_authenticated %} data-ws-url="/ws/notifications/" data-count-url="{% url 'social:notifications_count' %}"{% endif %}>
+  <a class="skip-link" href="#contenu">Aller au contenu</a>
+  {% block body %}{% endblock %}
+  {% include "partials/messages.html" %}
+  <template id="icon-templates">
+    <span data-icon="check">{% icon "check" %}</span>
+    <span data-icon="bell">{% icon "bell" %}</span>
+    <span data-icon="alert">{% icon "alert" %}</span>
+    <span data-icon="pause">{% icon "pause" %}</span>
+    <span data-icon="stop">{% icon "stop" %}</span>
+  </template>
+  <script src="{% static 'js/sensa.js' %}" defer></script>
+</body>
+</html>

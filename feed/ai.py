@@ -1,0 +1,107 @@
+"""Tâche IA du module 5 : embeddings pour les recommandations et la recherche sémantique.
+
+Fournisseur principal : sentence-transformers (modèle multilingue open source, local).
+Repli : vecteur lexical par hachage (racines + bigrammes), sans dépendance.
+Les vecteurs sont normalisés : le cosinus se réduit à un produit scalaire.
+"""
+
+import hashlib
+import importlib.util
+import logging
+import math
+import threading
+
+from django.conf import settings
+
+from core.ai.text import stem, tokenize
+
+logger = logging.getLogger("sensa.ai")
+
+HASH_DIMENSIONS = 256
+HASH_MODEL = f"hashing-{HASH_DIMENSIONS}"
+
+_model = None
+_model_lock = threading.Lock()
+
+
+def _normalize(vector):
+    norm = math.sqrt(sum(value * value for value in vector))
+    return [round(value / norm, 6) for value in vector] if norm else vector
+
+
+def hash_embedding(text):
+    roots = [stem(word) for word in tokenize(text)]
+    features = [(root, 1.0) for root in roots]
+    features += [(f"{a}_{b}", 0.5) for a, b in zip(roots, roots[1:])]
+    vector = [0.0] * HASH_DIMENSIONS
+    for feature, weight in features:
+        digest = int(hashlib.md5(feature.encode("utf-8")).hexdigest(), 16)
+        sign = 1.0 if (digest >> 64) & 1 else -1.0
+        vector[digest % HASH_DIMENSIONS] += sign * weight
+    return _normalize(vector)
+
+
+def _sentence_model():
+    global _model
+    with _model_lock:
+        if _model is None:
+            from sentence_transformers import SentenceTransformer
+
+            _model = SentenceTransformer(settings.SENSA_EMBEDDING_MODEL)
+    return _model
+
+
+def embedding_backend():
+    if settings.SENSA_USE_LOCAL_MODELS and importlib.util.find_spec("sentence_transformers") is not None:
+        return f"st:{settings.SENSA_EMBEDDING_MODEL}"
+    return HASH_MODEL
+
+
+def embed_text(text):
+    """Renvoie {"model": nom, "vector": [...]} pour un texte."""
+    backend = embedding_backend()
+    if backend != HASH_MODEL:
+        try:
+            vector = _sentence_model().encode(text or "", normalize_embeddings=True).tolist()
+            return {"model": backend, "vector": [round(v, 6) for v in vector]}
+        except Exception:
+            logger.exception("sentence-transformers indisponible, repli sur le hachage")
+    return {"model": HASH_MODEL, "vector": hash_embedding(text)}
+
+
+def cosine(first, second):
+    """Similarité cosinus entre deux embeddings du même modèle (0 sinon)."""
+    if not first or not second or first.get("model") != second.get("model"):
+        return 0.0
+    a, b = first.get("vector") or [], second.get("vector") or []
+    if len(a) != len(b) or not a:
+        return 0.0
+    dot = sum(x * y for x, y in zip(a, b))
+    norm = math.sqrt(sum(x * x for x in a)) * math.sqrt(sum(y * y for y in b))
+    return dot / norm if norm else 0.0
+
+
+def centroid(embeddings):
+    """Moyenne normalisée d'embeddings du même modèle."""
+    embeddings = [e for e in embeddings if e and e.get("vector")]
+    if not embeddings:
+        return None
+    model = embeddings[0]["model"]
+    vectors = [e["vector"] for e in embeddings if e["model"] == model and len(e["vector"]) == len(embeddings[0]["vector"])]
+    summed = [sum(values) for values in zip(*vectors)]
+    return {"model": model, "vector": _normalize(summed)}
+
+
+def semantic_threshold(model):
+    return 0.12 if model == HASH_MODEL else 0.3
+
+
+def publication_corpus(publication):
+    """Texte servant à l'embedding : texte, descriptions d'images, transcription, tags."""
+    parts = [publication.text]
+    parts += [image.description_ia or image.alt_text for image in publication.images.all()]
+    audio = publication.audio_or_none
+    if audio is not None:
+        parts.append(audio.transcription)
+    parts += [tag.name for tag in publication.tags.all()]
+    return "\n".join(part for part in parts if part)

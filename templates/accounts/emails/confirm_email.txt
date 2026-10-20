@@ -1,0 +1,9 @@
+Bonjour {{ user.display_name }},
+
+Bienvenue sur Sensa ! Confirmez votre adresse e-mail en ouvrant ce lien :
+
+{{ url }}
+
+Si vous n'êtes pas à l'origine de cette inscription, ignorez simplement ce message.
+
+— L'équipe Sensa

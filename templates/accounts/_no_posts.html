@@ -1,0 +1,9 @@
+{% load sensa_tags %}
+<div class="card empty-state" style="grid-column: 1 / -1">
+  {% icon "image" 28 %}
+  <strong>Aucune publication pour l'instant</strong>
+  {% if is_me %}
+    <span>Partagez votre premier moment : texte, image ou son.</span>
+    <a class="btn btn-primary" href="{% url 'publications:create' %}">{% icon "plus" %}Créer un post</a>
+  {% endif %}
+</div>

@@ -1,0 +1,80 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Nouvelle publication{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Nouvelle publication</span>
+      <h1>Partagez ce que vous ressentez</h1>
+    </div>
+  </header>
+  <form class="card composer" method="post" enctype="multipart/form-data" novalidate>
+    {% csrf_token %}
+    <div class="composer-person">
+      {% avatar user %}
+      <div>
+        <strong>{{ user.display_name }}</strong>
+        <span>Choisissez qui peut voir cette publication</span>
+      </div>
+      <label class="sr-only" for="{{ form.visibility.id_for_label }}">Visibilité</label>
+      {{ form.visibility }}
+    </div>
+
+    <label class="sr-only" for="{{ form.text.id_for_label }}">Texte de la publication</label>
+    {{ form.text }}
+    <div class="character-count" data-char-count>0 / {{ SENSA_MAX_TEXT_LENGTH }}</div>
+    {{ form.text.errors }}
+
+    <div class="upload-grid">
+      <div class="upload-tile{% if form.image.errors %} field-invalid{% endif %}">
+        <label class="upload-label" for="{{ form.image.id_for_label }}">
+          <span class="upload-icon">{% icon "upload" %}</span>
+          <strong>Ajouter une image</strong>
+          <span>JPEG, PNG ou WebP · 10 Mo maximum</span>
+        </label>
+        {{ form.image }}
+        <div class="upload-preview">
+          <img alt="">
+          <button type="button" class="preview-remove" aria-label="Retirer l'image">{% icon "x" 16 %}</button>
+        </div>
+      </div>
+      <div class="record-tile" data-recorder>
+        <button type="button" class="record-button" data-record-toggle>
+          <span class="record-icon">{% icon "mic" %}</span>
+          <strong data-record-title>Enregistrer un audio</strong>
+          <span data-record-hint>3 minutes maximum</span>
+        </button>
+        <audio controls hidden></audio>
+        <button type="button" class="audio-remove" aria-label="Retirer l'audio">{% icon "x" 16 %}</button>
+        <a href="#" class="file-alt record-import" data-audio-import>ou importer un fichier audio</a>
+      </div>
+    </div>
+    <div class="sr-only">{{ form.audio }}{{ form.audio_duration }}</div>
+    {{ form.image.errors }}
+    {{ form.audio.errors }}
+
+    <div class="composer-options">
+      <div id="alt-field" {% if not form.alt_text.value and not form.image.errors %}hidden{% endif %}>
+        {% include "partials/field.html" with field=form.alt_text %}
+      </div>
+    </div>
+
+    {% include "partials/form_errors.html" %}
+
+    <div class="ai-note">
+      <span class="ai-note-icon">{% icon "spark" %}</span>
+      <div>
+        <strong>L'IA intervient après la publication</strong>
+        <p>Votre post est en ligne immédiatement. En arrière-plan, Sensa ajoute une description de l'image, la transcription de l'audio et des tags pertinents, puis vérifie que le contenu respecte la charte.</p>
+      </div>
+    </div>
+
+    <div class="composer-actions">
+      <span class="muted">{{ remaining }} publication{{ remaining|pluralize }} restante{{ remaining|pluralize }} cette heure-ci (limite : {{ limit }})</span>
+      <a class="btn btn-ghost" href="{% url 'feed:home' %}">Annuler</a>
+      <button type="submit" class="btn btn-primary">Publier</button>
+    </div>
+  </form>
+</main>
+{% endblock %}

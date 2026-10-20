@@ -1,0 +1,74 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Comptes{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <a class="back-link" href="{% url 'moderation:settings' %}"><span class="back-arrow">←</span>Paramètres système</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Administration</span>
+      <h1>Comptes et rôles</h1>
+      <p>{{ page.paginator.count }} compte{{ page.paginator.count|pluralize }}</p>
+    </div>
+  </header>
+  <form class="toolbar" method="get">
+    <label class="sr-only" for="q">Rechercher un compte</label>
+    <input class="input" id="q" type="search" name="q" value="{{ query }}" placeholder="Nom, @utilisateur ou e-mail">
+    <label class="sr-only" for="role-filter">Rôle</label>
+    <select id="role-filter" name="role" data-autosubmit>
+      <option value="">Tous les rôles</option>
+      {% for value, label in roles %}<option value="{{ value }}"{% if role == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secondary">{% icon "search" 16 %}Filtrer</button>
+  </form>
+  <section class="card table-wrap">
+    <table>
+      <thead>
+        <tr><th>Membre</th><th>E-mail</th><th>Rôle</th><th>Publications</th><th>Inscription</th><th>Compte</th></tr>
+      </thead>
+      <tbody>
+        {% for member in page %}
+          <tr>
+            <td class="cell-main"><a href="{{ member.get_absolute_url }}"><strong>{{ member.display_name }}</strong><span>@{{ member.username }}</span></a></td>
+            <td>{{ member.email }}{% if member.email_confirmed %} {% icon "check" 12 %}{% endif %}</td>
+            <td>
+              {% if member.pk == user.pk %}
+                <span class="badge badge-review">{{ member.get_role_display }}</span>
+              {% else %}
+                <form class="inline-form" method="post" action="{% url 'moderation:account_update' member.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                  <input type="hidden" name="is_active" value="{% if member.is_active %}on{% endif %}">
+                  <select name="role" aria-label="Rôle de {{ member.username }}" data-autosubmit>
+                    {% for value, label in roles %}<option value="{{ value }}"{% if member.role == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+                  </select>
+                  <noscript><button type="submit" class="btn btn-small btn-secondary">OK</button></noscript>
+                </form>
+              {% endif %}
+            </td>
+            <td>{{ member.posts }}</td>
+            <td>{{ member.date_joined|date:"d/m/Y" }}</td>
+            <td>
+              {% if member.pk != user.pk %}
+                <form method="post" action="{% url 'moderation:account_update' member.pk %}"{% if member.is_active %} data-confirm="Désactiver le compte @{{ member.username }} ?"{% endif %}>
+                  {% csrf_token %}
+                  <input type="hidden" name="next" value="{{ request.get_full_path }}">
+                  <input type="hidden" name="role" value="{{ member.role }}">
+                  <input type="hidden" name="is_active" value="{% if not member.is_active %}on{% endif %}">
+                  {% if member.is_active %}
+                    <button type="submit" class="btn btn-small btn-danger">Désactiver</button>
+                  {% else %}
+                    <button type="submit" class="btn btn-small btn-secondary">Réactiver</button>
+                  {% endif %}
+                </form>
+              {% else %}<span class="muted">—</span>{% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not page.object_list %}<div class="empty-state">{% icon "users" 28 %}<strong>Aucun compte trouvé</strong></div>{% endif %}
+  </section>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% load sensa_tags %}
+{% block title %}Page introuvable{% endblock %}
+{% block body %}
+<main class="page error-page" id="contenu">
+  <div>
+    {% logo %}
+    <span class="eyebrow" style="margin-top:2rem">Erreur 404</span>
+    <h1>Cette page s'est envolée</h1>
+    <p>La publication a peut-être été supprimée, ou elle n'est pas visible pour vous.</p>
+    <a class="btn btn-primary" href="{% url 'feed:home' %}">Retour à l'accueil</a>
+  </div>
+</main>
+{% endblock %}

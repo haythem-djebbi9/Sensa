@@ -1,0 +1,71 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Accueil{% endblock %}
+{% block content %}
+<main class="page feed-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">{{ date_label }}</span>
+      <h1>{{ greeting }}</h1>
+    </div>
+    <a class="icon-btn" href="{% url 'feed:search' %}" aria-label="Rechercher">{% icon "search" %}</a>
+  </header>
+
+  {% if not user.email_confirmed %}
+    <div class="alert alert-info page-alert">
+      {% icon "bell" %}
+      <div>
+        <strong>Confirmez votre adresse e-mail</strong>
+        Un lien de confirmation a été envoyé à {{ user.email }}.
+        <form method="post" action="{% url 'accounts:resend_confirmation' %}">
+          {% csrf_token %}
+          <button type="submit" class="btn btn-small btn-secondary">Renvoyer l'e-mail</button>
+        </form>
+      </div>
+    </div>
+  {% endif %}
+
+  <a class="quick-compose card" href="{% url 'publications:create' %}">
+    {% avatar user %}
+    <span>Partagez une pensée, une image ou un son…</span>
+    <span class="quick-icons">{% icon "image" %}{% icon "mic" %}</span>
+  </a>
+
+  <nav class="feed-tabs" aria-label="Choix du fil">
+    {% for key, label in tabs %}
+      <a href="?fil={{ key }}" class="{% if tab == key %}tab-active{% endif %}"{% if tab == key %} aria-current="page"{% endif %}>
+        {% if key == "pour-vous" %}{% icon "spark" 16 %}{% elif key == "abonnements" %}{% icon "users" 16 %}{% else %}{% icon "clock" 16 %}{% endif %}{{ label }}
+      </a>
+    {% endfor %}
+  </nav>
+
+  {% if tab == "abonnements" and not follows_someone %}
+    <div class="alert alert-info page-alert">{% icon "users" %}<div><strong>Vous ne suivez encore personne.</strong> En attendant, voici les dernières publications de la communauté.</div></div>
+  {% elif tab == "pour-vous" %}
+    <div class="alert alert-ai page-alert">{% icon "spark" %}<div><strong>Un fil personnalisé et expliqué</strong> Chaque recommandation indique pourquoi elle vous est proposée. Aimez des publications pour l'affiner ; une sur cinq vous fait découvrir de nouveaux horizons.</div></div>
+  {% endif %}
+
+  {% if suggestions %}
+    <section class="card people-card" aria-labelledby="suggestions-title">
+      <h2 id="suggestions-title">Personnes à découvrir</h2>
+      <div class="people-list">
+        {% for person in suggestions %}{% include "partials/person_row.html" with following=False %}{% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  <div class="feed">
+    {% for post in page %}
+      {% include "partials/post_card.html" %}
+    {% empty %}
+      <div class="card empty-state">
+        {% icon "spark" 28 %}
+        <strong>Rien à afficher pour l'instant</strong>
+        <span>{% if tab == "pour-vous" %}Aimez quelques publications pour recevoir des recommandations.{% else %}Soyez la première personne à partager quelque chose !{% endif %}</span>
+        <a class="btn btn-primary" href="{% url 'publications:create' %}">{% icon "plus" %}Créer un post</a>
+      </div>
+    {% endfor %}
+  </div>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

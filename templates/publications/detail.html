@@ -1,0 +1,238 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags enrichment_tags l10n %}
+{% block title %}Publication de {{ post.author.display_name }}{% endblock %}
+{% block content %}
+<main class="page detail-page">
+  <a class="back-link" href="{% url 'feed:home' %}"><span class="back-arrow">←</span>Retour au fil</a>
+
+  <article class="card detail-card" id="post-{{ post.pk }}" data-detail-post="{{ post.pk }}" data-status="{{ post.status }}">
+    <div class="post-head">
+      <div class="person">
+        <a href="{{ post.author.get_absolute_url }}">{% avatar post.author %}</a>
+        <div>
+          <a href="{{ post.author.get_absolute_url }}"><strong>{{ post.author.display_name }}</strong></a>
+          <span>@{{ post.author.username }} · <time datetime="{{ post.created_at|date:'c' }}">{{ post.created_at|date:"d/m/Y à H:i" }}</time>{% if post.visibility == "FOLLOWERS" %} · Abonnés{% endif %}</span>
+        </div>
+      </div>
+      <div class="post-status">
+        {% status_badge post %}
+        {% include "partials/post_menu.html" %}
+      </div>
+    </div>
+
+    {% if post.status == "UNDER_REVIEW" %}
+      <div class="post-notice post-notice-review">{% icon "eye" 16 %}En cours de vérification par un modérateur : visible uniquement par l'auteur et les modérateurs.</div>
+    {% elif post.status == "BLOCKED" %}
+      <div class="post-notice post-notice-blocked">{% icon "shield" 16 %}Bloquée par la modération : visible uniquement par l'auteur et les modérateurs.</div>
+    {% elif post.status == "FAILED" %}
+      <div class="post-notice post-notice-failed">{% icon "alert" 16 %}Une analyse IA a échoué après plusieurs tentatives ; le post reste visible sous sa forme brute.</div>
+    {% elif post.status == "PENDING" %}
+      {% pipeline_progress post as progress %}
+      <div class="post-notice post-notice-review">{% icon "spark" 16 %}<span data-pipeline-label>L'IA analyse cette publication… étape {{ progress.done|add:1 }}/{{ progress.total }}{% if progress.step %} · {{ progress.step }}{% endif %}</span></div>
+    {% endif %}
+
+    {% if post.text %}<p class="detail-copy">{{ post.text|rich_text }}</p>{% endif %}
+
+    {% ai_result post "summary" as summary %}
+    {% ai_result post "tags" as insights %}
+    {% if summary.summary %}
+      <section class="summary-box" aria-label="Résumé généré par l'IA">
+        <div class="summary-head">{% badge "ai" "Résumé IA" %}{% if summary.sentiment %}<span class="chip-soft">Ton {{ summary.sentiment|sentiment_label|lower }}</span>{% endif %}</div>
+        <p>{{ summary.summary }}</p>
+        {% if summary.keywords %}<div class="keyword-row">{% for word in summary.keywords %}<span>{{ word }}</span>{% endfor %}</div>{% endif %}
+      </section>
+    {% endif %}
+
+    {% for image in post.images.all %}
+      <figure style="margin:0">
+        <div class="detail-image"><img src="{{ image.file.url }}" alt="{{ image.alt }}"></div>
+        <figcaption class="description-box">
+          {% if image.description_ia %}
+            {% badge "ai" "Description IA" %}
+            <p>{{ image.description_ia }}{% if image.alt_text %}<span class="alt-author">Texte alternatif de l'auteur : {{ image.alt_text }}</span>{% endif %}</p>
+          {% elif image.alt_text %}
+            {% badge "review" "Texte alternatif" "user" %}
+            <p>{{ image.alt_text }}</p>
+          {% elif post.status == "PENDING" %}
+            {% badge "analyzing" "Description en cours…" %}
+            <p>L'IA rédige une description de cette image pour les personnes malvoyantes.</p>
+          {% else %}
+            <p>Aucune description disponible.</p>
+          {% endif %}
+        </figcaption>
+      </figure>
+    {% endfor %}
+
+    {% with audio=post.audio_or_none %}
+      {% if audio %}
+        {% include "partials/audio_player.html" with audio=audio transcript_id="transcription" %}
+        <div class="transcript-head">
+          <div>
+            <span class="eyebrow">Transcription automatique{% if audio.language %} · {{ audio.language|language_label }}{% endif %}</span>
+            <h2>Lire en silence</h2>
+          </div>
+          {% if audio.transcript_lines %}
+            <button type="button" class="toggle toggle-on" data-toggle-target="transcription" aria-pressed="true" aria-label="Afficher la transcription"><span></span></button>
+          {% endif %}
+        </div>
+        {% if audio.transcript_lines %}
+          <div class="transcript" id="transcription">
+            {% for line in audio.transcript_lines %}
+              <p data-start="{{ line.start|unlocalize }}"><button type="button" aria-label="Écouter à partir de {{ line.start|duration }}">{{ line.start|duration }}</button><span>{{ line.text }}</span></p>
+            {% endfor %}
+          </div>
+          <div class="transcript-tools" id="traductions">
+            <div class="tool-group">
+              <span>{% icon "upload" 14 %}Télécharger</span>
+              <a href="{% url 'enrichment:subtitles' audio.pk 'vtt' %}">Sous-titres .vtt</a>
+              <a href="{% url 'enrichment:subtitles' audio.pk 'srt' %}">Sous-titres .srt</a>
+              <a href="{% url 'enrichment:subtitles' audio.pk 'txt' %}">Texte .txt</a>
+            </div>
+            <div class="tool-group">
+              <span>{% icon "globe" 14 %}Traduire</span>
+              {% for code, label in translation_languages %}
+                {% if code != audio.language %}
+                  <form method="post" action="{% url 'enrichment:translate' audio.pk %}">
+                    {% csrf_token %}<input type="hidden" name="lang" value="{{ code }}">
+                    <button type="submit">{{ label }}</button>
+                  </form>
+                {% endif %}
+              {% endfor %}
+            </div>
+          </div>
+          {% translations audio as audio_translations %}
+          {% for translation in audio_translations %}
+            <div class="translation-box">
+              <div class="summary-head">{% badge "ai" translation.label "globe" %}
+                {% if translation.status == "DONE" %}<span class="chip-soft">Traduction IA</span>{% elif translation.status == "FAILED" %}<span class="chip-soft">Échec</span>{% else %}<span class="chip-soft">En cours…</span>{% endif %}
+              </div>
+              {% if translation.status == "DONE" %}<p>{{ translation.text }}</p>
+              {% elif translation.status == "FAILED" %}<p class="muted">La traduction a échoué ({{ translation.error|truncatechars:80 }}). Relancez-la avec le bouton « {{ translation.label }} ».</p>
+              {% else %}<p class="muted">La traduction est en cours ; rechargez la page dans quelques secondes.</p>{% endif %}
+            </div>
+          {% endfor %}
+        {% elif post.status == "PENDING" %}
+          <div class="transcript"><p>{% badge "analyzing" "Transcription en cours…" %}</p></div>
+        {% else %}
+          <div class="transcript"><p class="muted">Transcription indisponible pour cet audio.</p></div>
+        {% endif %}
+      {% endif %}
+    {% endwith %}
+
+    {% if insights.category or insights.language %}
+      <div class="insight-row">
+        {% if insights.category %}<span>{% icon "grid" 14 %}Thème : <strong>{{ insights.category|category_label }}</strong></span>{% endif %}
+        {% if insights.language %}<span>{% icon "globe" 14 %}Langue : <strong>{{ insights.language|language_label }}</strong></span>{% endif %}
+      </div>
+    {% endif %}
+    {% include "partials/tag_row.html" %}
+
+    <div class="action-row">
+      <form method="post" action="{% url 'social:like_toggle' post.pk %}" data-like-form>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" class="action-btn{% if post.liked %} liked{% endif %}" aria-pressed="{{ post.liked|yesno:'true,false' }}" aria-label="J'aime">
+          {% icon "heart" %}<span data-like-count>{{ post.like_count }}</span>
+        </button>
+      </form>
+      <a class="action-btn" href="#commentaires">{% icon "message" %}<span>{{ post.comment_count }}</span></a>
+      <button type="button" class="action-btn" data-share-url="{{ post.get_absolute_url }}">{% icon "share" %}<span>Partager</span></button>
+      {% if user.pk != post.author_id %}
+        <a class="action-btn action-end" href="{% url 'moderation:report' post.pk %}">{% icon "flag" %}<span>Signaler</span></a>
+      {% endif %}
+    </div>
+  </article>
+
+  {% if analyses %}
+    <section class="card pipeline" aria-labelledby="pipeline-title">
+      <div class="pipeline-title-row">
+        <h2 id="pipeline-title">{% icon "spark" 18 %} Rapport d'analyse IA</h2>
+        <div class="table-actions">
+          {% if post.status == "FAILED" %}
+            <form method="post" action="{% url 'publications:retry' post.pk %}">{% csrf_token %}<button type="submit" class="btn btn-small btn-secondary">{% icon "refresh" 14 %}Relancer les échecs</button></form>
+          {% endif %}
+          <form method="post" action="{% url 'enrichment:reenrich' post.pk %}" data-confirm="Relancer toutes les analyses IA de cette publication ?">{% csrf_token %}<button type="submit" class="btn btn-small btn-ghost">{% icon "refresh" 14 %}Tout réanalyser</button></form>
+        </div>
+      </div>
+      <p class="muted pipeline-intro">Chaque étape tourne en arrière-plan (Celery) avec jusqu'à 3 tentatives. Visible par l'auteur et les modérateurs.</p>
+      <ol class="pipeline-steps">
+        {% for analysis in analyses %}
+          <li class="step-{{ analysis.status|lower }}">
+            <span class="step-dot" aria-hidden="true">{% if analysis.status == "DONE" %}{% icon "check" 14 %}{% elif analysis.status == "FAILED" %}{% icon "x" 14 %}{% else %}{% icon "clock" 14 %}{% endif %}</span>
+            <div class="step-body">
+              <strong>{% if user.is_moderator %}<a href="{% url 'enrichment:analysis_detail' analysis.pk %}">{{ analysis.get_type_display }}</a>{% else %}{{ analysis.get_type_display }}{% endif %}</strong>
+              <small>
+                {% if analysis.cached %}Réutilisé depuis le cache{% elif analysis.provider %}{{ analysis.provider }}{% if analysis.model %} · {{ analysis.model }}{% endif %}{% endif %}
+                {% if analysis.duration_ms is not None %} · {{ analysis.duration_ms|ms_label }}{% endif %}
+                · {{ analysis.attempts }} tentative{{ analysis.attempts|pluralize }}
+                {% if analysis.tokens %} · {{ analysis.tokens|compact }} jetons{% endif %}
+                {% if analysis.score is not None %} · score {{ analysis.score|percent }}{% endif %}
+              </small>
+              {% if analysis.status == "FAILED" and analysis.error %}<small class="error-text">{{ analysis.error|truncatechars:140 }}</small>{% endif %}
+            </div>
+            {% if analysis.status == "DONE" %}{% badge "ready" "Terminée" %}{% elif analysis.status == "FAILED" %}{% badge "failed" "Échec" %}{% elif analysis.status == "RETRY" %}{% badge "analyzing" "Relance programmée" "refresh" %}{% else %}{% badge "analyzing" analysis.get_status_display %}{% endif %}
+          </li>
+        {% endfor %}
+      </ol>
+    </section>
+  {% endif %}
+
+  <section class="card comments" id="commentaires" aria-labelledby="comments-title">
+    <h2 id="comments-title">Conversation <span>{{ comments|length }}</span></h2>
+    <form class="comment-box" method="post" action="{% url 'social:comment_create' post.pk %}">
+      {% csrf_token %}
+      {% avatar user %}
+      <label class="sr-only" for="{{ comment_form.text.id_for_label }}">Votre commentaire</label>
+      {{ comment_form.text }}
+      <button type="submit" class="btn btn-primary">Publier</button>
+    </form>
+    {{ comment_form.text.errors }}
+
+    {% if be_kind %}
+      <div class="alert alert-warning be-kind" role="alert">
+        {% icon "alert" %}
+        <div>
+          <strong>Restons bienveillants</strong>
+          Votre commentaire semble agressif. Les échanges sur Sensa restent respectueux : voulez-vous le reformuler ?
+          <div class="alert-actions">
+            <form method="post" action="{% url 'social:comment_create' post.pk %}">
+              {% csrf_token %}
+              <input type="hidden" name="text" value="{{ comment_form.text.value }}">
+              <input type="hidden" name="confirm" value="1">
+              <button type="submit" class="btn btn-small btn-secondary">Publier quand même</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    {% endif %}
+
+    {% for comment in comments %}
+      <div class="comment" id="comment-{{ comment.pk }}">
+        <a href="{{ comment.author.get_absolute_url }}">{% avatar comment.author %}</a>
+        <div>
+          <strong><a href="{{ comment.author.get_absolute_url }}">{{ comment.author.display_name }}</a> <span>· {{ comment.created_at|since }}</span></strong>
+          {% if comment.tone == "aggressive" %}
+            <details>
+              <summary>Commentaire masqué : ton jugé agressif par l'IA</summary>
+              <p>{{ comment.text }}</p>
+            </details>
+          {% else %}
+            <p>{{ comment.text|rich_text }}</p>
+          {% endif %}
+          <div class="comment-meta">
+            {% if comment.tone %}<span class="tone-chip tone-{{ comment.tone }}" title="Ton analysé par l'IA">{% icon "spark" 12 %}{{ comment.get_tone_display }}</span>{% endif %}
+            {% if comment.author_id == user.pk or post.author_id == user.pk or user.is_moderator %}
+              <form method="post" action="{% url 'social:comment_delete' comment.pk %}" data-confirm="Supprimer ce commentaire ?">
+                {% csrf_token %}
+                <button type="submit">Supprimer</button>
+              </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    {% empty %}
+      <p class="empty-comments">Aucun commentaire pour l'instant. Lancez la conversation !</p>
+    {% endfor %}
+  </section>
+</main>
+{% endblock %}

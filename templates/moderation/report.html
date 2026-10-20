@@ -1,0 +1,36 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Signaler une publication{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{{ publication.get_absolute_url }}"><span class="back-arrow">←</span>Retour à la publication</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Signalement</span>
+      <h1>Signaler cette publication</h1>
+      <p>« {{ publication.excerpt|default:"Publication média" }} » — @{{ publication.author.username }}</p>
+    </div>
+  </header>
+  {% if already %}
+    <div class="alert alert-info">{% icon "check" %}<div><strong>Vous avez déjà signalé cette publication.</strong> Un modérateur va l'examiner.</div></div>
+  {% else %}
+    <form method="post" class="card form-card" novalidate>
+      {% csrf_token %}
+      {% include "partials/form_errors.html" %}
+      <fieldset class="field">
+        <legend>{{ form.reason.label }}</legend>
+        <div class="radio-list">
+          {% for radio in form.reason %}<label>{{ radio.tag }}{{ radio.choice_label }}</label>{% endfor %}
+        </div>
+        {{ form.reason.errors }}
+      </fieldset>
+      {% include "partials/field.html" with field=form.details %}
+      <p class="muted">Les signalements sont anonymes pour l'auteur. Au-delà de trois signalements, la publication est masquée en attendant la décision d'un modérateur.</p>
+      <div class="form-actions">
+        <a class="btn btn-ghost" href="{{ publication.get_absolute_url }}">Annuler</a>
+        <button type="submit" class="btn btn-primary">{% icon "flag" 16 %}Envoyer le signalement</button>
+      </div>
+    </form>
+  {% endif %}
+</main>
+{% endblock %}

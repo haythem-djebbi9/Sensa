@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% load sensa_tags %}
+{% block title %}Accès refusé{% endblock %}
+{% block body %}
+<main class="page error-page" id="contenu">
+  <div>
+    {% logo %}
+    <span class="eyebrow" style="margin-top:2rem">Erreur 403</span>
+    <h1>Accès refusé</h1>
+    <p>Cette page est réservée à un autre rôle (modérateur ou administrateur).</p>
+    <a class="btn btn-primary" href="{% url 'feed:home' %}">Retour à l'accueil</a>
+  </div>
+</main>
+{% endblock %}

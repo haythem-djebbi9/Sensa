@@ -1,0 +1,41 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Notifications{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Boîte de réception</span>
+      <h1>Notifications</h1>
+    </div>
+    {% if unread_notifications %}
+      <form method="post" action="{% url 'social:notifications_mark_all_read' %}">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-ghost">Tout marquer comme lu</button>
+      </form>
+    {% endif %}
+  </header>
+  <section class="card notice-list" aria-label="Liste des notifications">
+    {% for notification in page %}
+      {% with icon_info=notification.icon %}
+        <a class="notice{% if not notification.is_read %} notice-unread{% endif %}{% if notification.priority == 0 %} priority-low{% endif %}" href="{% url 'social:notification_open' notification.pk %}">
+          <span class="notice-icon notice-{{ icon_info.1 }}">{% icon icon_info.0 %}</span>
+          <span class="notice-copy">
+            <strong>{{ notification.title }}</strong>
+            <span>{% if notification.type == "follow" %}{{ notification.actor.profile.bio|default:"Découvrez son profil" }}{% elif notification.message and notification.type == "comment" or notification.message and notification.type == "like" %}« {{ notification.message }} »{% elif notification.type == "like" %}Votre publication plaît{% else %}{{ notification.message }}{% endif %}</span>
+          </span>
+          <span class="notice-time">{{ notification.created_at|since }}</span>
+          {% if not notification.is_read %}<span class="unread-dot" aria-label="Non lue"></span>{% endif %}
+        </a>
+      {% endwith %}
+    {% empty %}
+      <div class="empty-state">
+        {% icon "bell" 28 %}
+        <strong>Tout est calme</strong>
+        <span>Vos likes, commentaires, abonnés et analyses IA apparaîtront ici en temps réel.</span>
+      </div>
+    {% endfor %}
+  </section>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

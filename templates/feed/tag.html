@@ -1,0 +1,23 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}#{{ tag_name }}{% endblock %}
+{% block content %}
+<main class="page feed-page">
+  <a class="back-link" href="{% url 'feed:search' %}"><span class="back-arrow">←</span>Explorer</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Hashtag</span>
+      <h1>#{{ tag_name }}</h1>
+      <p>{{ page.paginator.count }} publication{{ page.paginator.count|pluralize }}</p>
+    </div>
+  </header>
+  <div class="feed">
+    {% for post in page %}
+      {% include "partials/post_card.html" %}
+    {% empty %}
+      <div class="card empty-state">{% icon "hash" 28 %}<strong>Aucune publication avec ce tag</strong><span>Utilisez #{{ tag_name }} dans votre prochaine publication !</span></div>
+    {% endfor %}
+  </div>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

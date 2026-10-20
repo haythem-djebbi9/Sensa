@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% load sensa_tags %}
+{% block body %}
+<main class="auth-shell" id="contenu">
+  <section class="auth-brand">
+    <a href="{% url 'feed:home' %}" aria-label="Accueil Sensa">{% logo %}</a>
+    <div class="auth-message">
+      {% badge "ai" "Enrichi par l'IA, avec soin" %}
+      <h1>{% block brand_title %}Chaque moment a plus d'une dimension.{% endblock %}</h1>
+      <p>{% block brand_text %}Partagez texte, images et sons dans une même publication. Sensa rend discrètement chaque post plus accessible et plus facile à découvrir.{% endblock %}</p>
+      <ul class="auth-points">
+        <li>{% icon "image" 18 %}Chaque image est décrite automatiquement</li>
+        <li>{% icon "mic" 18 %}Chaque vocal est transcrit et recherchable</li>
+        <li>{% icon "shield" 18 %}Les contenus toxiques sont filtrés avant diffusion</li>
+      </ul>
+    </div>
+    {% waveform "sensa-auth" 32 "auth-wave" %}
+  </section>
+  <section class="auth-form-wrap">
+    {% block form %}{% endblock %}
+  </section>
+</main>
+{% endblock %}

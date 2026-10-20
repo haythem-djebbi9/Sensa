@@ -1,0 +1,13 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Trop de publications{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <div class="card empty-state">
+    {% icon "clock" 32 %}
+    <strong>Vous avez atteint la limite de {{ limit }} publications par heure</strong>
+    <span>Cette limite protège la communauté contre le spam. Réessayez un peu plus tard.</span>
+    <a class="btn btn-primary" href="{% url 'feed:home' %}">Retour au fil</a>
+  </div>
+</main>
+{% endblock %}

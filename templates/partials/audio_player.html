@@ -1,0 +1,12 @@
+{% load sensa_tags l10n %}
+<div class="audio-player{% if compact %} audio-compact{% endif %}" data-audio-player data-duration="{{ audio.duration|unlocalize }}"{% if transcript_id %} data-transcript="{{ transcript_id }}"{% endif %}>
+  <audio preload="metadata" src="{{ audio.file.url }}"></audio>
+  <button type="button" class="btn btn-coral audio-play" data-audio-toggle aria-label="Lire l'audio">{% icon "play" %}</button>
+  <div class="audio-track">
+    {% waveform audio.pk 32 %}
+    <div class="audio-meta">
+      <span data-audio-state>{% if audio.transcription %}Note vocale · transcrite{% else %}Note vocale{% endif %}</span>
+      <span data-audio-time>{{ audio.duration|duration }}</span>
+    </div>
+  </div>
+</div>

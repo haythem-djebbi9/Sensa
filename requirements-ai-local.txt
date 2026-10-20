@@ -1,0 +1,7 @@
+# Modèles open source optionnels (replis locaux quand les API ne sont pas configurées).
+# Lourds (PyTorch) : à installer seulement si vous voulez l'IA sans clé d'API.
+-r requirements.txt
+faster-whisper>=1.0          # transcription audio locale (module 3)
+sentence-transformers>=3.0   # embeddings sémantiques multilingues (module 5)
+transformers>=4.44           # légende d'image BLIP (module 1)
+detoxify>=0.5                # score de toxicité (module 4)

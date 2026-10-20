@@ -1,0 +1,21 @@
+{% load sensa_tags %}
+<div class="person-row">
+  <a href="{{ person.get_absolute_url }}">
+    {% avatar person %}
+    <div>
+      <strong>{{ person.display_name }}</strong>
+      <span>@{{ person.username }}{% if person.profile.bio %} · {{ person.profile.bio|truncatechars:60 }}{% endif %}</span>
+    </div>
+  </a>
+  {% if person.pk != user.pk %}
+    <form method="post" action="{% url 'social:follow_toggle' person.username %}" data-follow-form>
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      {% if following %}
+        <button type="submit" class="btn btn-small btn-secondary">Abonné·e</button>
+      {% else %}
+        <button type="submit" class="btn btn-small btn-primary">Suivre</button>
+      {% endif %}
+    </form>
+  {% endif %}
+</div>

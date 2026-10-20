@@ -1,0 +1,82 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}{{ member.display_name }} (@{{ member.username }}){% endblock %}
+{% block content %}
+<main class="page profile-page">
+  <section class="profile-hero card">
+    <div class="profile-accent"></div>
+    <div class="profile-main">
+      {% avatar member "large" %}
+      {% if is_me %}
+        <a class="btn btn-secondary" href="{% url 'accounts:profile_edit' %}">{% icon "edit" 16 %}Modifier le profil</a>
+      {% else %}
+        <form method="post" action="{% url 'social:follow_toggle' member.username %}" data-follow-form>
+          {% csrf_token %}
+          {% if is_following %}
+            <button type="submit" class="btn btn-secondary">Abonné·e</button>
+          {% else %}
+            <button type="submit" class="btn btn-primary">Suivre</button>
+          {% endif %}
+        </form>
+      {% endif %}
+    </div>
+    <div class="profile-copy">
+      <h1>{{ member.display_name }}</h1>
+      <span>@{{ member.username }}{% if member.profile.location %} · {{ member.profile.location }}{% endif %}{% if member.role != "MEMBRE" %} · {{ member.get_role_display }}{% endif %}</span>
+      {% if member.profile.bio %}<p>{{ member.profile.bio }}</p>{% elif is_me %}<p class="muted">Ajoutez une bio pour vous présenter.</p>{% endif %}
+    </div>
+    {% if member.profile.interests_list %}
+      <div class="interests">{% for interest in member.profile.interests_list %}<span>{{ interest }}</span>{% endfor %}</div>
+    {% endif %}
+    <div class="stats">
+      <div><strong>{{ posts_count }}</strong><span>Publications</span></div>
+      <a href="{% url 'social:followers' member.username %}"><strong data-followers-count>{{ followers_count }}</strong><span>Abonnés</span></a>
+      <a href="{% url 'social:following' member.username %}"><strong>{{ following_count }}</strong><span>Abonnements</span></a>
+    </div>
+  </section>
+
+  <div class="profile-post-head">
+    <h2>Publications</h2>
+    <div>
+      <a class="icon-btn{% if view == 'grille' %} icon-btn-active{% endif %}" href="?vue=grille" aria-label="Vue en grille"{% if view == 'grille' %} aria-current="true"{% endif %}>{% icon "grid" %}</a>
+      <a class="icon-btn{% if view == 'liste' %} icon-btn-active{% endif %}" href="?vue=liste" aria-label="Vue en liste"{% if view == 'liste' %} aria-current="true"{% endif %}>{% icon "list" %}</a>
+    </div>
+  </div>
+
+  {% if view == "liste" %}
+    <div class="profile-liste">
+      {% for post in posts %}{% include "partials/post_card.html" %}{% empty %}{% include "accounts/_no_posts.html" %}{% endfor %}
+    </div>
+  {% else %}
+    <div class="profile-posts">
+      {% for post in posts %}
+        {% with image=post.main_image audio=post.audio_or_none %}
+          {% if image %}
+            <a class="profile-tile image-tile" href="{{ post.get_absolute_url }}">
+              {% if post.status != "READY" %}<span class="tile-status">{% status_badge post %}</span>{% endif %}
+              <img src="{{ image.file.url }}" alt="{{ image.alt }}" loading="lazy">
+              {% if audio %}<span class="tile-chip">{% icon "headphones" 14 %}{{ audio.duration|duration }}</span>{% endif %}
+            </a>
+          {% elif audio %}
+            <a class="profile-tile sound-tile" href="{{ post.get_absolute_url }}">
+              {% if post.status != "READY" %}<span class="tile-status">{% status_badge post %}</span>{% endif %}
+              <span class="sound-circle">{% icon "mic" %}</span>
+              <strong>{{ post.excerpt|default:"Note vocale" }}</strong>
+              <span>{{ audio.duration|duration }} · {{ post.created_at|since }}</span>
+            </a>
+          {% else %}
+            <a class="profile-tile quote-tile" href="{{ post.get_absolute_url }}">
+              {% if post.status != "READY" %}<span class="tile-status">{% status_badge post %}</span>{% endif %}
+              <span class="quote-mark">“</span>
+              <strong>{{ post.text|truncatechars:160 }}</strong>
+              <span class="tile-meta">{% icon "heart" 14 %}{{ post.like_count }} · {{ post.created_at|since }}</span>
+            </a>
+          {% endif %}
+        {% endwith %}
+      {% empty %}
+        {% include "accounts/_no_posts.html" %}
+      {% endfor %}
+    </div>
+  {% endif %}
+</main>
+{% endblock %}

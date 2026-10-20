@@ -1,0 +1,56 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags enrichment_tags %}
+{% block title %}Analyse #{{ analysis.pk }}{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{% url 'enrichment:monitor' %}"><span class="back-arrow">←</span>Tableau de bord du pipeline</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Analyse #{{ analysis.pk }}</span>
+      <h1>{{ analysis.get_type_display }}</h1>
+      <p><a class="inline-tag" href="{{ analysis.publication.get_absolute_url }}">Publication de @{{ analysis.publication.author.username }}</a> · cible {{ analysis.target_id|truncatechars:24 }}</p>
+    </div>
+    {% if analysis.status == "FAILED" or analysis.status == "DONE" or analysis.status == "RUNNING" %}
+      <form method="post" action="{% url 'enrichment:retry_analysis' analysis.pk %}">
+        {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" class="btn btn-secondary">{% icon "refresh" 16 %}Relancer cette analyse</button>
+      </form>
+    {% endif %}
+  </header>
+
+  <div class="admin-metrics four">
+    <div class="metric card"><span>Statut</span><strong class="metric-small">{{ analysis.get_status_display }}</strong><small>{{ analysis.attempts }} / {{ max_retries }} tentative{{ analysis.attempts|pluralize }}</small></div>
+    <div class="metric card"><span>Durée totale</span><strong class="metric-small">{{ analysis.duration_ms|ms_label }}</strong><small>Relances comprises</small></div>
+    <div class="metric card"><span>Fournisseur</span><strong class="metric-small">{% if analysis.cached %}Cache{% else %}{{ analysis.provider|default:"—" }}{% endif %}</strong><small>{{ analysis.model|default:"—" }}</small></div>
+    <div class="metric card"><span>Jetons</span><strong class="metric-small">{{ analysis.tokens|compact }}</strong><small>{% if analysis.score is not None %}Score {{ analysis.score|percent }}{% else %}Toutes tentatives{% endif %}</small></div>
+  </div>
+
+  {% if analysis.error %}
+    <div class="alert alert-danger" style="margin-top:1rem">{% icon "alert" %}<div><strong>Dernière erreur</strong>{{ analysis.error }}</div></div>
+  {% endif %}
+
+  <section class="card form-card" style="margin-top:1rem">
+    <h2>Journal des tentatives</h2>
+    <ol class="pipeline-steps">
+      {% for attempt in attempts %}
+        <li class="step-{% if attempt.success %}done{% else %}failed{% endif %}">
+          <span class="step-dot" aria-hidden="true">{% if attempt.success %}{% icon "check" 14 %}{% else %}{% icon "x" 14 %}{% endif %}</span>
+          <div class="step-body">
+            <strong>Tentative {{ attempt.number }} · {% if attempt.success %}réussie{% else %}échouée{% endif %}</strong>
+            <small>{{ attempt.started_at|date:"d/m/Y H:i:s" }} · {{ attempt.duration_ms|ms_label }}{% if attempt.provider %} · {{ attempt.provider }}{% endif %}{% if attempt.model %} · {{ attempt.model }}{% endif %}{% if attempt.tokens %} · {{ attempt.tokens }} jetons{% endif %}</small>
+            {% if attempt.error %}<small class="error-text">{{ attempt.error }}</small>{% endif %}
+          </div>
+        </li>
+      {% empty %}
+        <li class="muted">Aucune tentative pour l'instant.</li>
+      {% endfor %}
+    </ol>
+  </section>
+
+  <section class="card form-card" style="margin-top:1rem">
+    <h2>Résultat enregistré</h2>
+    <pre class="json-view">{{ result_json }}</pre>
+    <p class="muted">Créée le {{ analysis.created_at|date:"d/m/Y H:i:s" }}{% if analysis.started_at %} · démarrée le {{ analysis.started_at|date:"d/m/Y H:i:s" }}{% endif %}{% if analysis.finished_at %} · terminée le {{ analysis.finished_at|date:"d/m/Y H:i:s" }}{% endif %}</p>
+  </section>
+</main>
+{% endblock %}

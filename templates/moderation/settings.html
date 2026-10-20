@@ -1,0 +1,86 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Paramètres système{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Administration</span>
+      <h1>Paramètres système</h1>
+    </div>
+    <a class="btn btn-secondary" href="{% url 'moderation:accounts' %}">{% icon "users" 16 %}Tous les comptes</a>
+  </header>
+
+  <div class="settings-layout">
+    <section class="card settings-card">
+      <div class="settings-title">
+        <span class="settings-icon">{% icon "user" %}</span>
+        <div>
+          <h2>Personnes et rôles</h2>
+          <p>Contrôlez l'accès aux outils de modération et d'administration.</p>
+        </div>
+        <a class="btn btn-secondary btn-small" href="{% url 'moderation:accounts' %}">Gérer</a>
+      </div>
+      <p class="subhead">Équipe de modération</p>
+      {% for member in staff %}{% include "moderation/_role_row.html" %}{% empty %}<p class="muted">Aucun modérateur.</p>{% endfor %}
+      <p class="subhead">Derniers inscrits</p>
+      {% for member in recent_members %}{% include "moderation/_role_row.html" %}{% empty %}<p class="muted">Aucun membre.</p>{% endfor %}
+    </section>
+
+    <div class="settings-side">
+      <form class="card settings-card" method="post" novalidate>
+        {% csrf_token %}
+        <div class="settings-title">
+          <span class="settings-icon settings-ai">{% icon "spark" %}</span>
+          <div>
+            <h2>Modération par l'IA</h2>
+            <p>Seuils appliqués au score de toxicité (0 à 100 %).</p>
+          </div>
+        </div>
+        {% include "partials/form_errors.html" %}
+        <div class="threshold-block">
+          <div class="threshold-value"><strong id="review-output">{{ form.review_percent.value }} %</strong><span>Mise en revue (UNDER_REVIEW)</span></div>
+          <input type="range" class="range" name="review_percent" min="0" max="100" step="1" value="{{ form.review_percent.value }}" data-output="review-output" data-threshold="review" aria-label="Seuil de mise en revue">
+          <div class="range-labels"><span>Plus permissif</span><span>Plus strict</span></div>
+        </div>
+        <div class="threshold-block">
+          <div class="threshold-value"><strong id="block-output">{{ form.block_percent.value }} %</strong><span>Blocage automatique (BLOCKED)</span></div>
+          <input type="range" class="range" name="block_percent" min="0" max="100" step="1" value="{{ form.block_percent.value }}" data-output="block-output" data-threshold="block" aria-label="Seuil de blocage">
+          <div class="range-labels"><span>Plus permissif</span><span>Plus strict</span></div>
+        </div>
+        <div class="threshold-scale" data-threshold-scale aria-hidden="true"><span></span><span></span><span></span></div>
+        <div class="threshold-legend"><span>Prêt</span><span>En revue</span><span>Bloqué</span></div>
+        <div class="threshold-block">
+          {% include "partials/field.html" with field=form.max_retries %}
+        </div>
+        <div class="form-actions" style="margin-top:1rem">
+          <button type="submit" class="btn btn-primary">Enregistrer</button>
+        </div>
+        <p class="muted" style="font-size:.68rem;margin-top:.6rem">Dernière modification : {{ config.updated_at|date:"d/m/Y H:i" }}{% if config.updated_by %} par @{{ config.updated_by.username }}{% endif %}</p>
+      </form>
+
+      <section class="card settings-card">
+        <div class="settings-title">
+          <span class="settings-icon {% if health.overall == 'ok' %}settings-health{% elif health.overall == 'warn' %}settings-warn{% else %}settings-down{% endif %}">{% if health.overall == "down" %}{% icon "alert" %}{% else %}{% icon "check" %}{% endif %}</span>
+          <div>
+            <h2>Santé du système</h2>
+            <p>{% if health.overall == "ok" %}Tous les services sont opérationnels{% elif health.overall == "warn" %}Opérationnel en mode développement{% else %}Un service nécessite votre attention{% endif %}</p>
+          </div>
+        </div>
+        {% for name, state, label in health.services %}
+          <div class="health-row"><span>{{ name }}</span><strong class="state-{{ state }}"><i></i>{{ label }}</strong></div>
+        {% endfor %}
+        <p class="subhead">Fournisseurs d'IA</p>
+        {% for name, state, label in health.providers %}
+          <div class="health-row"><span>{{ name }}</span><strong class="state-{{ state }}"><i></i>{{ label }}</strong></div>
+        {% endfor %}
+        <p class="subhead">Pipeline (24 h)</p>
+        <div class="health-row"><span>Analyses réussies</span><strong class="state-ok"><i></i>{{ health.pipeline.done }}{% if health.pipeline.success_rate is not None %} ({{ health.pipeline.success_rate }} %){% endif %}</strong></div>
+        <div class="health-row"><span>Échecs</span><strong class="state-{% if health.pipeline.failed %}down{% else %}ok{% endif %}"><i></i>{{ health.pipeline.failed }}</strong></div>
+        <div class="health-row"><span>En cours</span><strong class="state-ok"><i></i>{{ health.pipeline.active }}</strong></div>
+        <div class="health-foot">Vérifié à {{ health.checked_at|date:"H:i:s" }} · <a class="inline-tag" href="{% url 'enrichment:monitor' %}">Ouvrir le suivi du pipeline</a></div>
+      </section>
+    </div>
+  </div>
+</main>
+{% endblock %}

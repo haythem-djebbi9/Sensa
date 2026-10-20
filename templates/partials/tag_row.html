@@ -1,0 +1,14 @@
+{% load sensa_tags enrichment_tags %}
+{% with links=post.tag_links.all %}
+  {% if links %}
+    <div class="tag-row">
+      {% for link in links %}
+        {% if link.source == "ia" %}
+          <a class="tag-ai" href="{% url 'feed:tag' link.tag.name %}" title="Tag proposé par l'IA{% if link.confidence is not None %} · confiance {{ link.confidence|percent }}{% endif %}">{% icon "spark" 11 %}#{{ link.tag.name }}</a>
+        {% else %}
+          <a href="{% url 'feed:tag' link.tag.name %}" title="Tag de l'auteur">#{{ link.tag.name }}</a>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endif %}
+{% endwith %}

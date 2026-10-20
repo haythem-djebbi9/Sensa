@@ -1,0 +1,86 @@
+{% load sensa_tags enrichment_tags l10n %}
+<article class="card post-card" id="post-{{ post.pk }}" data-status="{{ post.status }}" data-card-url="{% url 'publications:card' post.pk %}">
+  {% if post.reason %}
+    <div class="post-reason">{% icon post.reason_icon|default:"spark" 15 %}{{ post.reason }}</div>
+  {% endif %}
+  <div class="post-head">
+    <div class="person">
+      <a href="{{ post.author.get_absolute_url }}">{% avatar post.author %}</a>
+      <div>
+        <a href="{{ post.author.get_absolute_url }}"><strong>{{ post.author.display_name }}</strong></a>
+        <span>
+          @{{ post.author.username }} ·
+          <a href="{{ post.get_absolute_url }}"><time datetime="{{ post.created_at|date:'c' }}" title="{{ post.created_at|date:'d/m/Y H:i' }}">{{ post.created_at|since }}</time></a>
+          {% if post.visibility == "FOLLOWERS" %}· Abonnés{% endif %}
+        </span>
+      </div>
+    </div>
+    <div class="post-status">
+      {% status_badge post %}
+      {% include "partials/post_menu.html" %}
+    </div>
+  </div>
+
+  {% if post.status == "UNDER_REVIEW" %}
+    <div class="post-notice post-notice-review">{% icon "eye" 16 %}En cours de vérification : visible uniquement par l'auteur et les modérateurs.</div>
+  {% elif post.status == "BLOCKED" %}
+    <div class="post-notice post-notice-blocked">{% icon "shield" 16 %}Bloquée par la modération : visible uniquement par l'auteur et les modérateurs.</div>
+  {% elif post.status == "FAILED" and user.pk == post.author_id %}
+    <div class="post-notice post-notice-failed">
+      {% icon "alert" 16 %}L'analyse IA a échoué : votre post reste visible sous sa forme brute.
+      <form method="post" action="{% url 'publications:retry' post.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button type="submit" class="btn btn-small btn-secondary">{% icon "refresh" 14 %}Relancer</button></form>
+    </div>
+  {% endif %}
+
+  {% if post.text %}
+    <div class="post-open"><p>{{ post.text|rich_text }}</p></div>
+  {% endif %}
+
+  {% with image=post.main_image %}
+    {% if image %}
+      <a class="media-wrap" href="{{ post.get_absolute_url }}">
+        <img src="{{ image.file.url }}" alt="{{ image.alt }}" loading="lazy">
+        {% if image.description_ia %}
+          <div class="ai-caption">{% icon "spark" 15 %}<span><strong>Description IA</strong> · {{ image.description_ia }}</span></div>
+        {% elif post.status == "PENDING" %}
+          <div class="ai-caption ai-caption-pending">{% icon "spark" 15 %}<span>Description de l'image en cours de génération…</span></div>
+        {% endif %}
+      </a>
+    {% endif %}
+  {% endwith %}
+
+  {% with audio=post.audio_or_none %}
+    {% if audio %}
+      {% include "partials/audio_player.html" with audio=audio compact=True %}
+      {% ai_result post "summary" as summary %}
+      {% if summary.summary %}
+        <div class="ai-caption ai-summary">{% icon "spark" 15 %}<span><strong>Résumé IA</strong> · {{ summary.summary }}</span></div>
+      {% endif %}
+    {% endif %}
+  {% endwith %}
+
+  {% include "partials/tag_row.html" %}
+
+  {% if post.status == "PENDING" %}
+    {% pipeline_progress post as progress %}
+    {% if progress.total %}
+      <div class="pipeline-progress" data-pipeline-progress>
+        <div class="pipeline-bar" role="progressbar" aria-valuemin="0" aria-valuemax="{{ progress.total }}" aria-valuenow="{{ progress.done }}" aria-label="Progression de l'analyse IA"><span style="width: {{ progress.percent|unlocalize }}%"></span></div>
+        <small data-pipeline-label>Étape {{ progress.done|add:1 }}/{{ progress.total }}{% if progress.step %} · {{ progress.step }}…{% endif %}{% if progress.retry %} (nouvelle tentative programmée){% endif %}</small>
+      </div>
+    {% endif %}
+  {% endif %}
+
+  <div class="action-row">
+    <form method="post" action="{% url 'social:like_toggle' post.pk %}" data-like-form>
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{% if card_mode %}{{ post.get_absolute_url }}{% else %}{{ request.get_full_path }}{% endif %}">
+      <button type="submit" class="action-btn{% if post.liked %} liked{% endif %}" aria-pressed="{{ post.liked|yesno:'true,false' }}" aria-label="J'aime">
+        {% icon "heart" %}<span data-like-count>{{ post.like_count|default:0 }}</span>
+      </button>
+    </form>
+    <a class="action-btn" href="{{ post.get_absolute_url }}#commentaires" aria-label="Commentaires">{% icon "message" %}<span>{{ post.comment_count|default:0 }}</span></a>
+    <button type="button" class="action-btn" data-share-url="{{ post.get_absolute_url }}">{% icon "share" %}<span>Partager</span></button>
+    <a class="action-btn action-end" href="{{ post.get_absolute_url }}" aria-label="Ouvrir la publication">{% icon "arrow" %}</a>
+  </div>
+</article>

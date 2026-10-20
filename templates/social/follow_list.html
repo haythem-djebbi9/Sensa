@@ -1,0 +1,28 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{{ member.get_absolute_url }}"><span class="back-arrow">←</span>Profil de {{ member.display_name }}</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">{% if which == "abonnes" %}Abonnés{% else %}Abonnements{% endif %}</span>
+      <h1>{{ title }}</h1>
+    </div>
+  </header>
+  <section class="card people-card">
+    <div class="people-list">
+      {% for person in page %}
+        {% if person.pk in my_following %}
+          {% include "partials/person_row.html" with following=True %}
+        {% else %}
+          {% include "partials/person_row.html" with following=False %}
+        {% endif %}
+      {% empty %}
+        <div class="empty-state">{% icon "users" 28 %}<strong>Personne pour l'instant</strong></div>
+      {% endfor %}
+    </div>
+  </section>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

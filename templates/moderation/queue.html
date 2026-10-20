@@ -1,0 +1,116 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}File de modération{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Opérations de sécurité</span>
+      <h1>File de modération</h1>
+      <p>Les publications les plus risquées d'abord (score IA puis nombre de signalements).</p>
+    </div>
+    {% if user.is_admin_role %}
+      <a class="btn btn-secondary" href="{% url 'moderation:settings' %}">{% icon "settings" 16 %}Seuils IA</a>
+    {% endif %}
+  </header>
+
+  <div class="admin-metrics">
+    <div class="metric card">
+      <span>En attente de revue</span>
+      <strong>{{ metrics.awaiting }}</strong>
+      <small>{{ metrics.high_priority }} haute priorité</small>
+    </div>
+    <div class="metric card">
+      <span>Décisions aujourd'hui</span>
+      <strong>{{ metrics.today }}</strong>
+      <small class="{% if metrics.today >= metrics.yesterday %}positive{% else %}negative{% endif %}">Hier : {{ metrics.yesterday }}</small>
+    </div>
+    <div class="metric card">
+      <span>Temps de réponse médian (7 j)</span>
+      <strong>{% if metrics.median_wait is not None %}{{ metrics.median_wait|duration }}{% else %}—{% endif %}</strong>
+      <small>min:s · objectif sous 10 min</small>
+    </div>
+  </div>
+
+  <nav class="admin-filters" aria-label="Filtrer la file">
+    {% for key, label, count in filters %}
+      <a href="?filtre={{ key }}" class="{% if current_filter == key %}admin-filter-active{% endif %}">{{ label }}<span>{{ count }}</span></a>
+    {% endfor %}
+  </nav>
+
+  <section class="card table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Publication</th>
+          <th>Aperçu du contenu</th>
+          <th>Score IA</th>
+          <th>Motifs</th>
+          <th>Statut</th>
+          <th><span class="sr-only">Actions</span></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in page %}
+          <tr>
+            <td class="cell-main">
+              <strong>#{{ item.pk|stringformat:"s"|slice:":6" }}</strong>
+              <span>@{{ item.author.username }} · {{ item.created_at|since }}</span>
+            </td>
+            <td>
+              <div class="preview">
+                <a href="{{ item.get_absolute_url }}">{{ item.excerpt|default:"(sans texte)" }}</a>
+                <small>
+                  {% if item.main_image %}{% icon "image" 12 %} Image{% endif %}
+                  {% with audio=item.audio_or_none %}{% if audio %} · {% icon "headphones" 12 %} Audio {{ audio.duration|duration }}{% if audio.transcription %} · transcription disponible{% endif %}{% endif %}{% endwith %}
+                </small>
+                {% if item.ai_justification %}<small>{% icon "spark" 12 %} {{ item.ai_justification }}</small>{% endif %}
+              </div>
+            </td>
+            <td>
+              <span class="score {% if item.ai_score >= config.threshold_block %}score-high{% elif item.ai_score < config.threshold_review %}score-low{% endif %}">{{ item.ai_score|percent_int }}%</span>
+            </td>
+            <td>
+              {% for reason in item.report_reasons %}{{ reason }}{% if not forloop.last %}, {% endif %}{% endfor %}
+              {% if item.open_reports %}<br><small class="muted">{{ item.open_reports }} signalement{{ item.open_reports|pluralize }}</small>{% endif %}
+              {% if item.ai_labels %}<br><small class="muted">IA : {{ item.ai_labels|join:", " }}</small>{% endif %}
+              {% if not item.report_reasons and not item.ai_labels %}<span class="muted">—</span>{% endif %}
+            </td>
+            <td>{% status_badge item %}</td>
+            <td>
+              <div class="table-actions">
+                {% if item.status != "READY" %}
+                  <form method="post" action="{% url 'moderation:decide' item.pk %}">
+                    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" name="action" value="approve" class="btn btn-secondary">Approuver</button>
+                  </form>
+                {% endif %}
+                {% if item.status != "BLOCKED" %}
+                  <form method="post" action="{% url 'moderation:decide' item.pk %}">
+                    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" name="action" value="block" class="btn btn-danger">Bloquer</button>
+                  </form>
+                {% endif %}
+                {% if item.open_reports %}
+                  <form method="post" action="{% url 'moderation:decide' item.pk %}">
+                    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" name="action" value="dismiss" class="btn btn-ghost">Rejeter les signalements</button>
+                  </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not page.object_list %}
+      <div class="empty-state">
+        {% icon "check" 28 %}
+        <strong>Tout est en ordre</strong>
+        <span>Aucune publication ne correspond à ce filtre.</span>
+      </div>
+    {% endif %}
+  </section>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

@@ -1,0 +1,22 @@
+{% extends "layouts/auth.html" %}
+{% load sensa_tags %}
+{% block title %}Le réseau social où l'IA rend chaque contenu accessible{% endblock %}
+{% block brand_title %}Publiez en texte, en image et en voix.{% endblock %}
+{% block brand_text %}L'IA rend tout accessible : chaque image est décrite, chaque vocal transcrit, chaque post enrichi de tags — sans jamais vous faire attendre.{% endblock %}
+{% block form %}
+<div class="auth-form">
+  <div>
+    <span class="eyebrow">Bienvenue sur Sensa</span>
+    <h2>Un post, trois formats, une IA</h2>
+    <p>Rejoignez une communauté où les échanges sont plus accessibles, plus sûrs et plus pertinents.</p>
+  </div>
+  <ol class="landing-steps">
+    <li><span class="step-num">1</span><div><strong>Publiez</strong><span>Texte, image et audio enregistré dans le navigateur, en une seule action.</span></div></li>
+    <li><span class="step-num">2</span><div><strong>C'est en ligne</strong><span>Votre post apparaît immédiatement dans le fil.</span></div></li>
+    <li><span class="step-num">3</span><div><strong>L'IA enrichit en quelques secondes</strong><span>Description, transcription, tags et modération automatiques.</span></div></li>
+  </ol>
+  <a class="btn btn-primary full-button" href="{% url 'accounts:signup' %}">Créer un compte</a>
+  <a class="btn btn-secondary full-button" href="{% url 'accounts:login' %}">Se connecter</a>
+  <p class="auth-switch">Accessible par défaut · conforme WCAG 2.1 AA</p>
+</div>
+{% endblock %}

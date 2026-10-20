@@ -1,0 +1,92 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}{% if query %}« {{ query }} »{% else %}Recherche{% endif %}{% endblock %}
+{% block content %}
+<main class="page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Explorer</span>
+      <h1>Trouvez ce qui vous parle</h1>
+    </div>
+  </header>
+
+  <form class="search-form" method="get" action="{% url 'feed:search' %}" role="search">
+    <div class="search-field">
+      {% icon "search" %}
+      <label class="sr-only" for="search-input">Rechercher</label>
+      <input id="search-input" type="search" name="q" value="{{ query }}" placeholder="Publications, #hashtags ou transcriptions audio" autocomplete="off"{% if not query %} autofocus{% endif %}>
+      <kbd>Ctrl K</kbd>
+      <button type="submit" class="btn btn-primary btn-small">Rechercher</button>
+    </div>
+    <input type="hidden" name="type" value="{{ kind }}">
+    <div class="search-options">
+      <div class="filter-chips" aria-label="Type de contenu">
+        {% for key, label in kinds %}
+          <a href="?{% query_transform type=key %}" class="{% if kind == key %}chip-active{% endif %}">
+            {% if key == "audio" %}{% icon "headphones" 16 %}{% elif key == "images" %}{% icon "image" 16 %}{% endif %}{{ label }}
+          </a>
+        {% endfor %}
+      </div>
+      <fieldset class="mode-switch" aria-label="Mode de recherche">
+        <label><input type="radio" name="mode" value="mots"{% if mode == "mots" %} checked{% endif %} data-autosubmit><span>{% icon "search" 14 %}</span>Mots-clés</label>
+        <label><input type="radio" name="mode" value="sens"{% if mode == "sens" %} checked{% endif %} data-autosubmit><span>{% icon "spark" 14 %}</span>Par le sens</label>
+      </fieldset>
+    </div>
+  </form>
+
+  {% if query %}
+    <div class="results-head">
+      <h2>Résultats</h2>
+      <span>{{ results|length }} résultat{{ results|length|pluralize }}{% if used_mode == "sens" %} · recherche sémantique{% elif used_mode == "tag" %} · hashtag{% endif %}</span>
+    </div>
+    {% if notice %}<div class="alert alert-ai page-alert">{% icon "spark" %}<div>{{ notice }}</div></div>{% endif %}
+    <div class="search-results">
+      {% for post in results %}
+        {% with image=post.main_image audio=post.audio_or_none %}
+          <a class="card result-card" href="{{ post.get_absolute_url }}">
+            {% if image %}
+              <img src="{{ image.file.url }}" alt="{{ image.alt }}" loading="lazy">
+            {% elif audio %}
+              <div class="result-audio-icon">{% icon "headphones" %}</div>
+            {% else %}
+              <div class="result-text-icon" aria-hidden="true">“</div>
+            {% endif %}
+            <div>
+              {% if image and audio %}{% badge "ready" "Audio + image" "headphones" %}{% elif audio %}{% badge "ai" "Audio" "headphones" %}{% elif image %}{% badge "review" "Image" "image" %}{% else %}{% badge "review" "Texte" "message" %}{% endif %}
+              <h3>{{ post.excerpt|default:"Publication sans texte" }}</h3>
+              {% if audio.transcription %}<p>{{ audio.transcription|truncatechars:140 }}</p>{% elif image.description_ia %}<p>{{ image.description_ia|truncatechars:140 }}</p>{% endif %}
+              <span class="matched">{% icon post.match_icon|default:"spark" 14 %}{{ post.match }}</span>
+              {% with tags=post.tags.all %}{% if tags %}<span class="matched muted">{% for tag in tags|slice:":4" %}#{{ tag.name }} {% endfor %}</span>{% endif %}{% endwith %}
+              <div class="result-person">{% avatar post.author %}<span>{{ post.author.display_name }} · {{ post.created_at|since }}</span></div>
+            </div>
+          </a>
+        {% endwith %}
+      {% empty %}
+        <div class="card empty-state">
+          {% icon "search" 28 %}
+          <strong>Aucun résultat</strong>
+          <span>Essayez d'autres mots, un #hashtag, ou la recherche « Par le sens ».</span>
+        </div>
+      {% endfor %}
+    </div>
+  {% else %}
+    <div class="search-aside">
+      {% if recent %}
+        <section>
+          <h2>Vos recherches récentes</h2>
+          <div class="chip-cloud">{% for item in recent %}<a href="?q={{ item|urlencode }}">{% icon "clock" 14 %}{{ item }}</a>{% endfor %}</div>
+        </section>
+      {% endif %}
+      <section>
+        <h2>Tendances de la semaine</h2>
+        {% if trending %}
+          <div class="chip-cloud">{% for tag in trending %}<a href="{% url 'feed:tag' tag.name %}">#{{ tag.name }} <small>{{ tag.nb }}</small></a>{% endfor %}</div>
+        {% else %}
+          <p class="muted">Les tags générés par l'IA apparaîtront ici.</p>
+        {% endif %}
+      </section>
+      <div class="alert alert-ai">{% icon "spark" %}<div><strong>La recherche comprend l'audio</strong> Les vocaux sont transcrits automatiquement : retrouvez une publication par ce qui y est dit, ou cherchez « par le sens » pour trouver des idées proches même sans les mêmes mots.</div></div>
+    </div>
+  {% endif %}
+</main>
+{% endblock %}

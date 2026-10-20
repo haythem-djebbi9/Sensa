@@ -1,0 +1,20 @@
+{% extends "layouts/auth.html" %}
+{% block title %}Connexion{% endblock %}
+{% block form %}
+<form class="auth-form" method="post" novalidate>
+  {% csrf_token %}
+  <div>
+    <span class="eyebrow">Bon retour</span>
+    <h2>Connectez-vous pour écouter</h2>
+    <p>Vos proches et leurs derniers moments vous attendent.</p>
+  </div>
+  {% include "partials/form_errors.html" %}
+  {% include "partials/field.html" with field=form.username %}
+  {% include "partials/field.html" with field=form.password %}
+  <a class="forgot" href="{% url 'accounts:password_reset' %}">Mot de passe oublié ?</a>
+  <input type="hidden" name="next" value="{{ next }}">
+  <button type="submit" class="btn btn-primary full-button">Se connecter</button>
+  <div class="divider"><span>ou</span></div>
+  <p class="auth-switch">Nouveau sur Sensa ? <a href="{% url 'accounts:signup' %}">Créer un compte</a></p>
+</form>
+{% endblock %}

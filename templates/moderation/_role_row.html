@@ -1,0 +1,24 @@
+{% load sensa_tags %}
+<div class="role-row">
+  <a href="{{ member.get_absolute_url }}">
+    {% avatar member %}
+    <div>
+      <strong>{{ member.display_name }}</strong>
+      <span>{{ member.email }}</span>
+    </div>
+  </a>
+  {% if member.pk == user.pk %}
+    <span class="badge badge-review">Vous · {{ member.get_role_display }}</span>
+  {% else %}
+    <form class="inline-form" method="post" action="{% url 'moderation:account_update' member.pk %}">
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{{ request.get_full_path }}">
+      <input type="hidden" name="is_active" value="{% if member.is_active %}on{% endif %}">
+      <label class="sr-only" for="role-{{ member.pk }}">Rôle de {{ member.display_name }}</label>
+      <select id="role-{{ member.pk }}" name="role" data-autosubmit>
+        {% for value, label in roles %}<option value="{{ value }}"{% if member.role == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+      </select>
+      <noscript><button type="submit" class="btn btn-small btn-secondary">OK</button></noscript>
+    </form>
+  {% endif %}
+</div>

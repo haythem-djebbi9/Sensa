@@ -1,0 +1,45 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Modifier la publication{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{{ post.get_absolute_url }}"><span class="back-arrow">←</span>Retour à la publication</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Modifier</span>
+      <h1>Modifier la publication</h1>
+    </div>
+  </header>
+  <form class="card composer" method="post" novalidate>
+    {% csrf_token %}
+    <div class="composer-person">
+      {% avatar user %}
+      <div>
+        <strong>{{ user.display_name }}</strong>
+        <span>Publiée le {{ post.created_at|date:"d/m/Y à H:i" }}</span>
+      </div>
+      <label class="sr-only" for="{{ form.visibility.id_for_label }}">Visibilité</label>
+      {{ form.visibility }}
+    </div>
+    <label class="sr-only" for="{{ form.text.id_for_label }}">Texte de la publication</label>
+    {{ form.text }}
+    <div class="character-count" data-char-count>0 / {{ SENSA_MAX_TEXT_LENGTH }}</div>
+    {{ form.text.errors }}
+    {% if form.alt_text %}
+      <div class="composer-options">{% include "partials/field.html" with field=form.alt_text %}</div>
+    {% endif %}
+    {% include "partials/form_errors.html" %}
+    <div class="ai-note">
+      <span class="ai-note-icon">{% icon "spark" %}</span>
+      <div>
+        <strong>Le texte change, l'IA réanalyse</strong>
+        <p>Si vous modifiez le texte, les tags, la modération et les recommandations sont recalculés en arrière-plan. Les médias ne peuvent pas être remplacés : supprimez la publication pour en changer.</p>
+      </div>
+    </div>
+    <div class="composer-actions">
+      <a class="btn btn-ghost" href="{{ post.get_absolute_url }}">Annuler</a>
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </form>
+</main>
+{% endblock %}

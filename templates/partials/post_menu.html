@@ -1,0 +1,22 @@
+{% load sensa_tags %}
+<details class="menu">
+  <summary class="icon-btn" aria-label="Options de la publication">{% icon "more" %}</summary>
+  <div class="menu-list">
+    <a href="{{ post.get_absolute_url }}">{% icon "eye" 16 %}Voir la publication</a>
+    {% if user.pk == post.author_id %}
+      <a href="{% url 'publications:edit' post.pk %}">{% icon "edit" 16 %}Modifier</a>
+    {% endif %}
+    {% if post.status == "FAILED" %}{% if user.pk == post.author_id or user.is_moderator %}
+      <form method="post" action="{% url 'publications:retry' post.pk %}">
+        {% csrf_token %}
+        <button type="submit">{% icon "refresh" 16 %}Relancer l'analyse IA</button>
+      </form>
+    {% endif %}{% endif %}
+    {% if user.pk != post.author_id %}
+      <a href="{% url 'moderation:report' post.pk %}">{% icon "flag" 16 %}Signaler</a>
+    {% endif %}
+    {% if user.pk == post.author_id or user.is_moderator %}
+      <a class="danger" href="{% url 'publications:delete' post.pk %}">{% icon "trash" 16 %}Supprimer</a>
+    {% endif %}
+  </div>
+</details>

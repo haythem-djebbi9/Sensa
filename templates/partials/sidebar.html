@@ -1,0 +1,39 @@
+{% load sensa_tags %}
+<aside class="sidebar">
+  <a class="sidebar-logo" href="{% url 'feed:home' %}" aria-label="Accueil Sensa">{% logo %}</a>
+  <nav aria-label="Navigation principale">
+    <a href="{% url 'feed:home' %}" class="{% active 'feed:home' %}">{% icon "home" %}<span>Accueil</span></a>
+    <a href="{% url 'feed:search' %}" class="{% active 'feed:search' 'feed:tag' %}">{% icon "search" %}<span>Recherche</span></a>
+    <a href="{% url 'social:notifications' %}" class="{% active 'social:notifications' %}">
+      {% icon "bell" %}<span>Notifications</span>
+      <i class="nav-count" data-notif-count {% if not unread_notifications %}hidden{% endif %}>{{ unread_notifications }}</i>
+    </a>
+    <a href="{{ user.get_absolute_url }}" class="{% active 'accounts:profile' 'accounts:profile_edit' 'social:followers' 'social:following' %}">{% icon "user" %}<span>Profil</span></a>
+  </nav>
+  <a class="btn btn-primary create-button" href="{% url 'publications:create' %}" aria-label="Créer une publication">{% icon "plus" %}<span>Créer un post</span></a>
+  {% if user.is_moderator %}
+    <div class="admin-nav">
+      <span>Outils d'administration</span>
+      <a href="{% url 'moderation:queue' %}" class="{% active 'moderation:queue' %}">{% icon "shield" %}<span>Modération</span></a>
+      <a href="{% url 'enrichment:monitor' %}" class="{% active 'enrichment:monitor' %}">{% icon "activity" %}<span>Pipeline IA</span></a>
+      {% if user.is_admin_role %}
+        <a href="{% url 'moderation:settings' %}" class="{% active 'moderation:settings' 'moderation:accounts' %}">{% icon "settings" %}<span>Paramètres</span></a>
+      {% endif %}
+    </div>
+  {% else %}
+    <div class="sidebar-spacer"></div>
+  {% endif %}
+  <div class="sidebar-profile">
+    <a href="{{ user.get_absolute_url }}">
+      {% avatar user %}
+      <div>
+        <strong>{{ user.display_name }}</strong>
+        <span>@{{ user.username }}</span>
+      </div>
+    </a>
+    <form method="post" action="{% url 'accounts:logout' %}">
+      {% csrf_token %}
+      <button type="submit" class="icon-btn" aria-label="Se déconnecter" title="Se déconnecter">{% icon "logout" %}</button>
+    </form>
+  </div>
+</aside>

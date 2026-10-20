@@ -1,0 +1,37 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Modifier mon profil{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{{ user.get_absolute_url }}"><span class="back-arrow">←</span>Mon profil</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Compte et profil</span>
+      <h1>Modifier mon profil</h1>
+    </div>
+  </header>
+  <form method="post" enctype="multipart/form-data" class="card form-card" novalidate>
+    {% csrf_token %}
+    {% include "partials/form_errors.html" with form=profile_form %}
+    <h2>Profil public</h2>
+    <div class="form-grid">
+      {% include "partials/field.html" with field=profile_form.display_name %}
+      {% include "partials/field.html" with field=profile_form.location %}
+    </div>
+    {% include "partials/field.html" with field=profile_form.bio %}
+    {% include "partials/field.html" with field=profile_form.interests %}
+    {% include "partials/field.html" with field=profile_form.avatar %}
+    <h2>Compte</h2>
+    {% include "partials/form_errors.html" with form=account_form %}
+    {% include "partials/field.html" with field=account_form.email %}
+    <p class="muted">
+      {% if user.email_confirmed %}{% icon "check" 14 %} Adresse confirmée.{% else %}Adresse non confirmée : modifier l'adresse renverra un lien de confirmation.{% endif %}
+      <a class="inline-tag" href="{% url 'accounts:password_reset' %}">Changer de mot de passe</a>
+    </p>
+    <div class="form-actions">
+      <a class="btn btn-ghost" href="{{ user.get_absolute_url }}">Annuler</a>
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </form>
+</main>
+{% endblock %}

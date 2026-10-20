@@ -1,0 +1,215 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags enrichment_tags l10n %}
+{% block title %}Pipeline IA{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Module 3 · Enrichissement IA asynchrone</span>
+      <h1>Tableau de bord du pipeline</h1>
+      <p>Chaque analyse tourne dans Celery, jamais dans la requête web : {{ max_retries }} tentatives (10 s, 1 min, 5 min) avant l'état FAILED.</p>
+    </div>
+    <div class="table-actions">
+      <form method="post" action="{% url 'enrichment:watchdog' %}">{% csrf_token %}<button type="submit" class="btn btn-secondary">{% icon "activity" 16 %}Débloquer ({{ stuck_count }})</button></form>
+      <form method="post" action="{% url 'enrichment:retry_all_failed' %}"{% if failed_count %} data-confirm="Relancer les {{ failed_count }} analyse(s) en échec ?"{% endif %}>{% csrf_token %}<button type="submit" class="btn btn-primary"{% if not failed_count %} disabled{% endif %}>{% icon "refresh" 16 %}Relancer les échecs ({{ failed_count }})</button></form>
+    </div>
+  </header>
+
+  <div class="admin-metrics four">
+    <div class="metric card">
+      <span>Analyses terminées (24 h)</span>
+      <strong>{{ stats.total }}</strong>
+      <small>{% if stats.success_rate is not None %}{{ stats.success_rate }} % de réussite{% else %}Aucune pour l'instant{% endif %}{% if stats.active %} · {{ stats.active }} en cours{% endif %}</small>
+    </div>
+    <div class="metric card">
+      <span>Latence moyenne d'une analyse</span>
+      <strong>{{ stats.avg_ms|ms_label }}</strong>
+      <small>95 % sous {{ stats.p95_ms|ms_label }} · objectif &lt; 30 s</small>
+    </div>
+    <div class="metric card">
+      <span>Jetons consommés (24 h)</span>
+      <strong>{{ stats.tokens|compact }}</strong>
+      <small>Suivis par tentative et par modèle</small>
+    </div>
+    <div class="metric card">
+      <span>Analyses évitées par le cache</span>
+      <strong>{{ cache_stats.hits }}</strong>
+      <small>{{ cache_stats.entries }} média{{ cache_stats.entries|pluralize }} en cache · une seule analyse par média</small>
+    </div>
+  </div>
+
+  <section class="card chart-card" aria-labelledby="timeline-title">
+    <div class="chart-head">
+      <div>
+        <h2 id="timeline-title">Analyses terminées par heure</h2>
+        <p class="muted">24 dernières heures · survolez une colonne pour le détail</p>
+      </div>
+      <ul class="chart-legend" aria-label="Légende">
+        <li><span class="swatch swatch-done"></span>Réussies</li>
+        <li><span class="swatch swatch-failed"></span>En échec</li>
+      </ul>
+    </div>
+    <div class="column-chart" role="img" aria-label="Histogramme des analyses terminées par heure, {{ stats.done }} réussies et {{ stats.failed }} en échec sur 24 heures">
+      <div class="chart-axis"><span>{{ stats.timeline_peak }}</span><span>0</span></div>
+      <div class="chart-plot">
+        {% for bucket in stats.timeline %}
+          <div class="chart-col" tabindex="0" aria-label="{{ bucket.label }} : {{ bucket.done }} réussie(s), {{ bucket.failed }} en échec">
+            <div class="col-stack">
+              {% if bucket.failed %}<span class="seg seg-failed" style="height: {{ bucket.failed_pct|unlocalize }}%"></span>{% endif %}
+              {% if bucket.done %}<span class="seg seg-done" style="height: {{ bucket.done_pct|unlocalize }}%"></span>{% endif %}
+            </div>
+            <span class="col-tip"><strong>{{ bucket.label }}</strong>{{ bucket.done }} réussie{{ bucket.done|pluralize }} · {{ bucket.failed }} échec{{ bucket.failed|pluralize }}</span>
+            {% if forloop.counter0|divisibleby:3 %}<span class="col-label">{{ bucket.label }}</span>{% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    </div>
+    <details class="chart-data">
+      <summary>Voir les données sous forme de tableau</summary>
+      <table>
+        <thead><tr><th>Heure</th><th>Réussies</th><th>En échec</th></tr></thead>
+        <tbody>{% for bucket in stats.timeline %}{% if bucket.total %}<tr><td>{{ bucket.label }}</td><td>{{ bucket.done }}</td><td>{{ bucket.failed }}</td></tr>{% endif %}{% endfor %}</tbody>
+      </table>
+    </details>
+  </section>
+
+  <div class="dashboard-grid">
+    <section class="card table-wrap" aria-labelledby="steps-title">
+      <div class="chart-head padded"><h2 id="steps-title">Performance par étape (24 h)</h2></div>
+      <table class="compact-table">
+        <thead>
+          <tr><th>Étape</th><th>Analyses</th><th>Réussite</th><th>Latence moy.</th><th>p95</th><th>Relancées</th><th>Cache</th></tr>
+        </thead>
+        <tbody>
+          {% for row in stats.per_type %}
+            <tr>
+              <td><a href="?type={{ row.type }}"><strong>{{ row.label }}</strong></a></td>
+              <td>{{ row.total }}{% if row.failed %} <small class="muted">({{ row.failed }} échec{{ row.failed|pluralize }})</small>{% endif %}</td>
+              <td>
+                <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ row.success_rate }}" aria-label="Taux de réussite {{ row.label }}">
+                  <span class="meter-track"><span class="meter-fill" style="width: {{ row.success_rate|unlocalize }}%"></span></span>
+                  <span class="meter-value">{{ row.success_rate }} %</span>
+                </div>
+              </td>
+              <td>{{ row.avg_ms|ms_label }}</td>
+              <td>{{ row.p95_ms|ms_label }}</td>
+              <td>{{ row.retried }}</td>
+              <td>{{ row.cached }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="7" class="muted">Aucune analyse terminée sur les dernières 24 heures.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+
+    <section class="card settings-card" aria-labelledby="providers-title">
+      <div class="settings-title">
+        <span class="settings-icon settings-ai">{% icon "spark" %}</span>
+        <div><h2 id="providers-title">Fournisseurs utilisés</h2><p>Analyses réussies par fournisseur (24 h)</p></div>
+      </div>
+      {% for provider in stats.providers %}
+        <div class="provider-row">
+          <span>{{ provider.name }}</span>
+          <span class="meter-track"><span class="meter-fill" style="width: {{ provider.pct|unlocalize }}%"></span></span>
+          <strong>{{ provider.count }}</strong>
+        </div>
+      {% empty %}
+        <p class="muted">Aucune donnée.</p>
+      {% endfor %}
+      <p class="subhead">Ordre de repli</p>
+      <p class="muted provider-chain">Groq (Whisper, gpt-oss, Qwen vision) → Claude → modèles open source locaux → replis basiques</p>
+    </section>
+  </div>
+
+  <section class="card pipeline-diagram" aria-labelledby="diagram-title">
+    <h2 id="diagram-title">Ordre des étapes</h2>
+    <ol class="diagram-steps">
+      <li class="{% if not config.describe_images %}is-off{% endif %}"><span>1</span>Description d'image<small>vision · module 1</small></li>
+      <li class="{% if not config.transcribe_audio %}is-off{% endif %}"><span>2</span>Transcription<small>Whisper · module 3</small></li>
+      <li class="{% if not config.generate_tags %}is-off{% endif %}"><span>3</span>Tags, thème, langue<small>module 3</small></li>
+      <li class="{% if not config.summarize %}is-off{% endif %}"><span>4</span>Résumé<small>module 3</small></li>
+      <li><span>5</span>Modération<small>toxicité · module 4</small></li>
+      <li><span>6</span>Embedding<small>recommandations · module 5</small></li>
+    </ol>
+    <p class="muted">Puis calcul du statut final : READY, UNDER_REVIEW, BLOCKED ou FAILED, et notification de l'auteur en temps réel. Les étapes grisées sont désactivées.</p>
+  </section>
+
+  {% if config_form %}
+    <form class="card form-card" id="configuration" method="post" action="{% url 'enrichment:config' %}">
+      {% csrf_token %}
+      <div class="settings-title" style="margin:0">
+        <span class="settings-icon">{% icon "settings" %}</span>
+        <div><h2>Configuration du pipeline</h2><p>Réservé aux administrateurs · modifié le {{ config.updated_at|date:"d/m/Y H:i" }}{% if config.updated_by %} par @{{ config.updated_by.username }}{% endif %}</p></div>
+      </div>
+      <div class="switch-grid">
+        {% for field in config_form %}
+          {% if field.field.widget.input_type == "checkbox" %}
+            <label class="switch-row">{{ field }}<span>{{ field.label|capfirst }}</span></label>
+          {% endif %}
+        {% endfor %}
+      </div>
+      <div class="form-grid">
+        {% include "partials/field.html" with field=config_form.whisper_model %}
+        {% include "partials/field.html" with field=config_form.language_hint %}
+        {% include "partials/field.html" with field=config_form.max_tags %}
+        {% include "partials/field.html" with field=config_form.stuck_after_minutes %}
+      </div>
+      <div class="form-actions"><button type="submit" class="btn btn-primary">Enregistrer la configuration</button></div>
+    </form>
+  {% endif %}
+
+  <div class="results-head"><h2>Toutes les analyses</h2><span>{{ page.paginator.count }} analyse{{ page.paginator.count|pluralize }}</span></div>
+  <form class="toolbar" method="get" style="margin-top:0">
+    <label class="sr-only" for="statut">Statut</label>
+    <select id="statut" name="statut" data-autosubmit>
+      <option value="">Tous les statuts</option>
+      {% for value, label in statuses %}<option value="{{ value }}"{% if status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <label class="sr-only" for="type">Type</label>
+    <select id="type" name="type" data-autosubmit>
+      <option value="">Toutes les analyses</option>
+      {% for value, label in types %}<option value="{{ value }}"{% if analysis_type == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <noscript><button type="submit" class="btn btn-secondary">Filtrer</button></noscript>
+  </form>
+
+  <section class="card table-wrap">
+    <table>
+      <thead>
+        <tr><th>Publication</th><th>Analyse</th><th>Statut</th><th>Tentatives</th><th>Fournisseur · modèle</th><th>Durée</th><th>Score</th><th>Dernière erreur</th><th>Mise à jour</th><th><span class="sr-only">Actions</span></th></tr>
+      </thead>
+      <tbody>
+        {% for analysis in page %}
+          <tr>
+            <td class="cell-main"><a href="{{ analysis.publication.get_absolute_url }}"><strong>#{{ analysis.publication_id|stringformat:"s"|slice:":6" }}</strong><span>@{{ analysis.publication.author.username }}</span></a></td>
+            <td><a href="{% url 'enrichment:analysis_detail' analysis.pk %}">{{ analysis.get_type_display }}</a></td>
+            <td>
+              {% if analysis.status == "DONE" %}{% badge "ready" "Terminée" %}{% elif analysis.status == "FAILED" %}{% badge "failed" "Échec" %}{% elif analysis.status == "RETRY" %}{% badge "analyzing" "Relance programmée" "refresh" %}{% else %}{% badge "analyzing" analysis.get_status_display %}{% endif %}
+            </td>
+            <td>{{ analysis.attempts }} / {{ max_retries }}</td>
+            <td>{% if analysis.cached %}cache{% else %}{{ analysis.provider|default:"—" }}{% endif %}{% if analysis.model %}<br><small class="muted">{{ analysis.model }}</small>{% endif %}</td>
+            <td>{{ analysis.duration_ms|ms_label }}</td>
+            <td>{% if analysis.score is not None %}{{ analysis.score|percent }}{% else %}—{% endif %}</td>
+            <td><span class="error-text">{{ analysis.error|default:"—"|truncatechars:90 }}</span></td>
+            <td>{{ analysis.updated_at|since }}</td>
+            <td>
+              <div class="table-actions">
+                <a class="btn btn-small btn-ghost" href="{% url 'enrichment:analysis_detail' analysis.pk %}">Détails</a>
+                {% if analysis.status == "FAILED" or analysis.status == "RUNNING" and analysis.updated_at < stuck_before %}
+                  <form method="post" action="{% url 'enrichment:retry_analysis' analysis.pk %}">
+                    {% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}">
+                    <button type="submit" class="btn btn-small btn-secondary">{% icon "refresh" 14 %}Relancer</button>
+                  </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not page.object_list %}<div class="empty-state">{% icon "activity" 28 %}<strong>Aucune analyse</strong><span>Les analyses apparaîtront ici dès la première publication.</span></div>{% endif %}
+  </section>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

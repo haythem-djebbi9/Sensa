@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block body %}
+<div class="app-shell">
+  {% include "partials/sidebar.html" %}
+  {% include "partials/mobile_nav.html" %}
+  <div class="content-shell" id="contenu">
+    {% block content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

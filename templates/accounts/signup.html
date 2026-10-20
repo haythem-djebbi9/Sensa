@@ -1,0 +1,20 @@
+{% extends "layouts/auth.html" %}
+{% block title %}Inscription{% endblock %}
+{% block form %}
+<form class="auth-form" method="post" novalidate>
+  {% csrf_token %}
+  <div>
+    <span class="eyebrow">Rejoindre Sensa</span>
+    <h2>Créez votre compte</h2>
+    <p>Partagez le monde tel que vous le percevez.</p>
+  </div>
+  {% include "partials/form_errors.html" %}
+  {% include "partials/field.html" with field=form.display_name %}
+  {% include "partials/field.html" with field=form.username %}
+  {% include "partials/field.html" with field=form.email %}
+  {% include "partials/field.html" with field=form.password1 %}
+  {% include "partials/field.html" with field=form.password2 %}
+  <button type="submit" class="btn btn-primary full-button">Créer mon compte</button>
+  <p class="auth-switch">Déjà inscrit·e ? <a href="{% url 'accounts:login' %}">Se connecter</a></p>
+</form>
+{% endblock %}

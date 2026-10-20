@@ -1,0 +1,18 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Supprimer la publication{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{{ post.get_absolute_url }}"><span class="back-arrow">←</span>Retour à la publication</a>
+  <form method="post" class="card form-card">
+    {% csrf_token %}
+    <input type="hidden" name="next" value="{% url 'feed:home' %}">
+    <div class="alert alert-danger">{% icon "trash" %}<div><strong>Supprimer définitivement cette publication ?</strong>Le texte, les médias, les commentaires et les réactions seront supprimés. Cette action est irréversible.</div></div>
+    <blockquote class="muted" style="margin:0">« {{ post.excerpt|default:"Publication sans texte" }} » — @{{ post.author.username }}</blockquote>
+    <div class="form-actions">
+      <a class="btn btn-ghost" href="{{ post.get_absolute_url }}">Annuler</a>
+      <button type="submit" class="btn btn-danger">{% icon "trash" 16 %}Supprimer</button>
+    </div>
+  </form>
+</main>
+{% endblock %}
