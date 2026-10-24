@@ -13,8 +13,8 @@ from enrichment.dispatch import enqueue
 from publications.models import Publication
 
 from .ai import quick_tone
-from .models import Abonnement, Commentaire, Notification, Reaction
-from .services import notify, toggle_follow
+from .models import Abonnement, Commentaire, Notification
+from .services import notify, toggle_follow, toggle_reaction
 from .tasks import analyse_tone
 
 
@@ -49,13 +49,8 @@ def follow_toggle(request, username):
 @require_POST
 def like_toggle(request, pk):
     publication = get_object_or_404(Publication.objects.visible_to(request.user).select_related("author"), pk=pk)
-    existing = Reaction.objects.filter(publication=publication, member=request.user, type=Reaction.Type.LIKE)
-    if existing.exists():
-        existing.delete()
-        liked = False
-    else:
-        Reaction.objects.create(publication=publication, member=request.user, type=Reaction.Type.LIKE)
-        liked = True
+    liked = toggle_reaction(publication, request.user)
+    if liked:
         already_notified = Notification.objects.filter(
             recipient=publication.author, actor=request.user, type=Notification.Type.LIKE, publication=publication
         ).exists()

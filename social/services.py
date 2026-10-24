@@ -77,6 +77,16 @@ def toggle_follow(follower, followed):
     return True
 
 
+def toggle_reaction(publication, member):
+    """Ajoute ou retire le « j'aime » d'un membre ; renvoie True si le membre aime désormais."""
+    existing = Reaction.objects.filter(publication=publication, member=member, type=Reaction.Type.LIKE)
+    if existing.exists():
+        existing.delete()
+        return False
+    Reaction.objects.create(publication=publication, member=member, type=Reaction.Type.LIKE)
+    return True
+
+
 def annotate_social(queryset, user):
     """Ajoute like_count, comment_count, republish_count, liked, republished et saved (par l'utilisateur courant)."""
     from publications.models import Enregistrement, Republication
