@@ -13,10 +13,17 @@ logger = logging.getLogger("sensa")
 
 
 def group_name(user_id):
+    """Nom du groupe Channels d'un destinataire (une connexion WebSocket par membre)."""
     return f"notifications_{user_id}"
 
 
+def unread_count(user_id):
+    """Nombre de notifications non lues d'un membre."""
+    return Notification.objects.filter(recipient_id=user_id, is_read=False).count()
+
+
 def notification_payload(notification):
+    """Charge utile JSON poussée au navigateur : contenu de la notification et compteur non lu."""
     from django.urls import reverse
 
     return {
@@ -25,7 +32,7 @@ def notification_payload(notification):
         "title": notification.title,
         "message": notification.message,
         "url": reverse("social:notification_open", args=[notification.pk]),
-        "unread": Notification.objects.filter(recipient_id=notification.recipient_id, is_read=False).count(),
+        "unread": unread_count(notification.recipient_id),
     }
 
 
