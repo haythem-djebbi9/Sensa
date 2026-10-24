@@ -3,8 +3,7 @@
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncJsonWebsocketConsumer
 
-from .models import Notification
-from .services import group_name
+from .services import group_name, unread_count
 
 
 class NotificationConsumer(AsyncJsonWebsocketConsumer):
@@ -27,4 +26,4 @@ class NotificationConsumer(AsyncJsonWebsocketConsumer):
 
     @database_sync_to_async
     def _unread_count(self, user_id):
-        return Notification.objects.filter(recipient_id=user_id, is_read=False).count()
+        return unread_count(user_id)
