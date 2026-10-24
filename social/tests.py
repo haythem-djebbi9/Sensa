@@ -47,6 +47,28 @@ class FollowLikeTests(SensaTestCase):
         self.assertEqual(response.status_code, 404)
 
 
+class FollowListTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.maya = make_member("maya")
+        self.noah = make_member("noah")
+        Abonnement.objects.create(follower=self.lina, followed=self.maya)
+        Abonnement.objects.create(follower=self.noah, followed=self.maya)
+
+    def test_followers_page_lists_members_who_follow_the_profile(self):
+        self.client.force_login(self.maya)
+        response = self.client.get(reverse("social:followers", args=["maya"]))
+        self.assertContains(response, "Abonnés de maya")
+        self.assertEqual(set(response.context["page"].object_list), {self.lina, self.noah})
+
+    def test_following_page_lists_the_profile_subscriptions(self):
+        self.client.force_login(self.lina)
+        response = self.client.get(reverse("social:following", args=["lina"]))
+        self.assertContains(response, "Abonnements de lina")
+        self.assertEqual(set(response.context["page"].object_list), {self.maya})
+        self.assertIn(self.maya.pk, set(response.context["my_following"]))
+
+
 class CommentTests(SensaTestCase):
     def setUp(self):
         self.lina = make_member("lina")
@@ -107,6 +129,37 @@ class NotificationViewsTests(SensaTestCase):
         self.client.post(reverse("social:notifications_mark_all_read"))
         self.assertFalse(Notification.objects.filter(is_read=False).exists())
         self.assertContains(self.client.get(reverse("social:notifications")), "maya a aimé votre publication")
+
+    def test_mark_all_read_json_response(self):
+        lina, maya = make_member("lina"), make_member("maya")
+        Notification.objects.create(recipient=lina, actor=maya, type="follow")
+        self.client.force_login(lina)
+        response = self.client.post(
+            reverse("social:notifications_mark_all_read"), HTTP_X_REQUESTED_WITH="fetch"
+        )
+        self.assertEqual(response.json(), {"unread": 0})
+        self.assertFalse(Notification.objects.filter(recipient=lina, is_read=False).exists())
+
+    def test_open_comment_notification_marks_it_read_and_anchors_the_comment(self):
+        lina, maya = make_member("lina"), make_member("maya")
+        post = Publication.objects.create(author=lina, text="Bonjour", status=Publication.Status.READY)
+        comment = Commentaire.objects.create(publication=post, author=maya, text="Merci")
+        notification = Notification.objects.create(
+            recipient=lina, actor=maya, type="comment", publication=post, commentaire=comment
+        )
+        self.client.force_login(lina)
+        response = self.client.get(reverse("social:notification_open", args=[notification.pk]))
+        self.assertRedirects(response, f"{post.get_absolute_url()}#comment-{comment.pk}")
+        notification.refresh_from_db()
+        self.assertTrue(notification.is_read)
+
+    def test_notification_title_and_icon_depend_on_the_type(self):
+        lina, maya = make_member("lina"), make_member("maya")
+        follow = Notification.objects.create(recipient=lina, actor=maya, type="follow")
+        ready = Notification.objects.create(recipient=lina, type="ai_ready")
+        self.assertEqual(follow.title, "maya vous suit désormais")
+        self.assertEqual(follow.icon, ("user", "mint"))
+        self.assertEqual(ready.icon, ("spark", "ai"))
 
 
 class WebsocketTests(TestCase):
