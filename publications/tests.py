@@ -143,3 +143,8 @@ class ImageAltTests(SensaTestCase):
     def test_alt_uses_ai_description(self):
         self.image.description_ia = "Un coucher de soleil sur la mer."
         self.assertEqual(self.image.alt, "Un coucher de soleil sur la mer.")
+
+    def test_alt_prefers_author_text(self):
+        self.image.description_ia = "Un coucher de soleil sur la mer."
+        self.image.alt_text = "Ma plage préférée à Bizerte"
+        self.assertEqual(self.image.alt, "Ma plage préférée à Bizerte")
