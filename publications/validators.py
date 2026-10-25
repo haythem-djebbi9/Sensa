@@ -1,4 +1,4 @@
-"""Validation des fichiers : type, 10 Mo maximum, 3 minutes d'audio maximum (mesurées sur le fichier)."""
+"""Validation des fichiers : type, 10 Mo et 50 mégapixels maximum, 3 minutes d'audio maximum (mesurées sur le fichier)."""
 
 import os
 import struct
@@ -24,6 +24,7 @@ def validate_image_upload(upload):
         upload.seek(0)
         with PILImage.open(upload) as img:
             image_format = img.format
+            pixels = img.width * img.height
             img.verify()
     except Exception as exc:
         raise ValidationError("Ce fichier n'est pas une image valide.") from exc
@@ -31,6 +32,10 @@ def validate_image_upload(upload):
         upload.seek(0)
     if image_format not in IMAGE_FORMATS:
         raise ValidationError("Formats acceptés : JPEG, PNG ou WebP.")
+    # Un petit fichier peut cacher une image immense (et saturer la mémoire une fois décompressée).
+    if pixels > settings.SENSA_MAX_IMAGE_PIXELS:
+        max_mp = settings.SENSA_MAX_IMAGE_PIXELS // 1_000_000
+        raise ValidationError(f"L'image est trop grande : {max_mp} mégapixels maximum.")
 
 
 def validate_audio_upload(upload):

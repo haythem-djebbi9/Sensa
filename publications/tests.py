@@ -90,6 +90,13 @@ class PublishTests(SensaTestCase):
         response = self.publish(self.client, {"text": "test"}, {"image": image_upload(size=(200, 200))})
         self.assertContains(response, "taille maximale")
 
+    @override_settings(SENSA_MAX_IMAGE_PIXELS=1_000_000)
+    def test_image_pixel_limit(self):
+        # Fichier PNG de quelques Ko, mais un peu plus d'un mégapixel une fois décompressé.
+        response = self.publish(self.client, {"text": "test"}, {"image": image_upload(size=(1001, 1000))})
+        self.assertContains(response, "L&#x27;image est trop grande : 1 mégapixels maximum.")
+        self.assertFalse(Publication.objects.exists())
+
     @override_settings(SENSA_MAX_AUDIO_SECONDS=3)
     def test_audio_longer_than_limit_rejected(self):
         response = self.publish(self.client, {"text": "test"}, {"audio": wav_upload(seconds=5)})
