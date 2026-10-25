@@ -142,7 +142,7 @@ class Image(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
-        ordering = ["created_at"]
+        ordering = ["created_at", "id"]
         verbose_name = "image"
         verbose_name_plural = "images"
 

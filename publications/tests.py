@@ -70,6 +70,32 @@ class PublishTests(SensaTestCase):
         self.assertEqual(description.status, AnalyseIA.Status.DONE)
         self.assertTrue(description.provider)
 
+    def test_carousel_of_three_images(self):
+        colors = [(200, 40, 40), (40, 200, 40), (40, 40, 200)]
+        files = [image_upload(f"photo{index}.png", color=color) for index, color in enumerate(colors)]
+        self.publish(self.client, {"text": "Ma journée en 3 photos", "alt_text": "Le port au matin"}, {"image": files})
+        post = Publication.objects.get()
+        images = list(post.images.all())
+        self.assertEqual(len(images), 3)
+        self.assertEqual([image.alt_text for image in images], ["Le port au matin", "", ""])
+        self.assertTrue(all(image.description_ia for image in images))
+        self.assertEqual(post.analyses.filter(type=AnalyseIA.Type.DESCRIPTION).count(), 3)
+        response = self.client.get(reverse("publications:card", args=[post.pk]))
+        self.assertContains(response, "data-carousel")
+        self.assertContains(response, "1/3")
+
+    @override_settings(SENSA_MAX_IMAGES=2)
+    def test_too_many_images_rejected(self):
+        files = [image_upload(f"photo{index}.png") for index in range(3)]
+        response = self.publish(self.client, {"text": "test"}, {"image": files})
+        self.assertContains(response, "2 images maximum par publication.")
+        self.assertFalse(Publication.objects.exists())
+
+    def test_single_image_has_no_carousel(self):
+        self.publish(self.client, {"text": ""}, {"image": image_upload()})
+        response = self.client.get(reverse("publications:card", args=[Publication.objects.get().pk]))
+        self.assertNotContains(response, "data-carousel")
+
     def test_empty_post_rejected(self):
         response = self.publish(self.client, {"text": "   "})
         self.assertEqual(response.status_code, 200)

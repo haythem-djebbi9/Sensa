@@ -221,6 +221,7 @@ else:
 # --- Règles métier Sensa -----------------------------------------------------
 SENSA_MAX_TEXT_LENGTH = 2000
 SENSA_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 Mo
+SENSA_MAX_IMAGES = 10  # images par publication (carrousel)
 SENSA_MAX_IMAGE_PIXELS = 50_000_000  # 50 mégapixels : une image décompressée occupe ~3 octets par pixel
 SENSA_MAX_AUDIO_SECONDS = 180  # 3 minutes
 SENSA_POSTS_PER_HOUR = int(env("SENSA_POSTS_PER_HOUR", "10"))

@@ -28,12 +28,31 @@ def strip_image_metadata(upload):
     return ContentFile(buffer.getvalue(), name=upload.name)
 
 
+class MultipleImageInput(forms.FileInput):
+    allow_multiple_selected = True
+
+
+class MultipleImageField(forms.ImageField):
+    """Plusieurs images dans un même champ (carrousel) : renvoie une liste, vide si aucune."""
+
+    def __init__(self, *args, **kwargs):
+        attrs = {"accept": "image/jpeg,image/png,image/webp", "data-image-input": "",
+                 "data-max-files": settings.SENSA_MAX_IMAGES}
+        kwargs.setdefault("widget", MultipleImageInput(attrs=attrs))
+        super().__init__(*args, **kwargs)
+
+    def clean(self, data, initial=None):
+        files = data if isinstance(data, (list, tuple)) else [data]
+        images = [super(MultipleImageField, self).clean(file, initial) for file in files if file]
+        if len(images) > settings.SENSA_MAX_IMAGES:
+            raise forms.ValidationError(f"{settings.SENSA_MAX_IMAGES} images maximum par publication.")
+        for image in images:
+            validate_image_upload(image)
+        return images
+
+
 class PublicationForm(forms.ModelForm):
-    image = forms.ImageField(
-        label="Image",
-        required=False,
-        widget=forms.FileInput(attrs={"accept": "image/jpeg,image/png,image/webp", "data-image-input": ""}),
-    )
+    image = MultipleImageField(label="Images", required=False)
     alt_text = forms.CharField(
         label="Texte alternatif (facultatif)",
         required=False,
@@ -62,12 +81,6 @@ class PublicationForm(forms.ModelForm):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.audio_seconds = 0.0
-
-    def clean_image(self):
-        image = self.cleaned_data.get("image")
-        if image:
-            validate_image_upload(image)
-        return image
 
     def clean_audio(self):
         audio = self.cleaned_data.get("audio")
@@ -100,11 +113,10 @@ class PublicationForm(forms.ModelForm):
         publication.author = author
         publication.status = Publication.Status.PENDING
         publication.save()
-        image = self.cleaned_data.get("image")
-        if image:
-            Image.objects.create(
-                publication=publication, file=strip_image_metadata(image), alt_text=self.cleaned_data.get("alt_text", "")
-            )
+        for position, image in enumerate(self.cleaned_data.get("image") or []):
+            # Le texte alternatif saisi décrit la première image ; l'IA décrit les autres.
+            alt_text = self.cleaned_data.get("alt_text", "") if position == 0 else ""
+            Image.objects.create(publication=publication, file=strip_image_metadata(image), alt_text=alt_text)
         audio = self.cleaned_data.get("audio")
         if audio:
             Audio.objects.create(publication=publication, file=audio, duration=self.audio_seconds)

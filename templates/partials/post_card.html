@@ -39,16 +39,26 @@
     <div class="post-open"><p>{{ post.text|rich_text }}</p></div>
   {% endif %}
 
-  {% with image=post.main_image %}
-    {% if image %}
-      <a class="media-wrap" href="{{ post.get_absolute_url }}">
-        <img src="{{ image.file.url }}" alt="{{ image.alt }}" loading="lazy">
-        {% if image.description_ia %}
-          <div class="ai-caption">{% icon "spark" 15 %}<span><strong>Description IA</strong> · {{ image.description_ia }}</span></div>
-        {% elif post.status == "PENDING" %}
-          <div class="ai-caption ai-caption-pending">{% icon "spark" 15 %}<span>Description de l'image en cours de génération…</span></div>
-        {% endif %}
-      </a>
+  {% with images=post.images.all %}
+    {% if images %}
+      {% if images|length > 1 %}<div class="carousel" data-carousel><div class="carousel-track" data-carousel-track>{% endif %}
+      {% for image in images %}
+        <a class="media-wrap" href="{{ post.get_absolute_url }}"{% if images|length > 1 %} aria-label="Image {{ forloop.counter }} sur {{ images|length }}"{% endif %}>
+          <img src="{{ image.file.url }}" alt="{{ image.alt }}" loading="lazy">
+          {% if image.description_ia %}
+            <div class="ai-caption">{% icon "spark" 15 %}<span><strong>Description IA</strong> · {{ image.description_ia }}</span></div>
+          {% elif post.status == "PENDING" %}
+            <div class="ai-caption ai-caption-pending">{% icon "spark" 15 %}<span>Description de l'image en cours de génération…</span></div>
+          {% endif %}
+        </a>
+      {% endfor %}
+      {% if images|length > 1 %}
+        </div>
+        <span class="carousel-count" data-carousel-count>1/{{ images|length }}</span>
+        <button type="button" class="carousel-nav carousel-prev" data-carousel-prev aria-label="Image précédente" disabled>{% icon "arrow" 18 %}</button>
+        <button type="button" class="carousel-nav carousel-next" data-carousel-next aria-label="Image suivante">{% icon "arrow" 18 %}</button>
+      </div>
+      {% endif %}
     {% endif %}
   {% endwith %}
 

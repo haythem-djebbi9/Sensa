@@ -58,6 +58,7 @@
             <a class="profile-tile image-tile" href="{{ post.get_absolute_url }}">
               {% if post.status != "READY" %}<span class="tile-status">{% status_badge post %}</span>{% endif %}
               <img src="{{ image.file.url }}" alt="{{ image.alt }}" loading="lazy">
+              {% with count=post.images.all|length %}{% if count > 1 %}<span class="tile-chip tile-chip-top" aria-label="{{ count }} images">{% icon "image" 14 %}{{ count }}</span>{% endif %}{% endwith %}
               {% if audio %}<span class="tile-chip">{% icon "headphones" 14 %}{{ audio.duration|duration }}</span>{% endif %}
             </a>
           {% elif audio %}
