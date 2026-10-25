@@ -1,6 +1,10 @@
 {% load sensa_tags %}
 <div class="card empty-state" style="grid-column: 1 / -1">
-  {% if tab == "republications" %}
+  {% if tab == "enregistres" %}
+    {% icon "bookmark" 28 %}
+    <strong>Aucune publication enregistrée</strong>
+    <span>Touchez {% icon "bookmark" 14 %} sous un post pour le retrouver ici. Vous seul·e voyez cette liste.</span>
+  {% elif tab == "republications" %}
     {% icon "repeat" 28 %}
     <strong>Aucune republication pour l'instant</strong>
     {% if is_me %}<span>Touchez {% icon "repeat" 14 %} sous un post pour le republier sur votre profil.</span>{% endif %}

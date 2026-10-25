@@ -370,7 +370,8 @@
     });
   }
 
-  function initRepostForm(form) {
+  /* Bouton bascule (republier, enregistrer) : `key` est le booléen renvoyé par le serveur. */
+  function initToggleForm(form, key, className, onMessage, offMessage) {
     if (form.dataset.ready) return;
     form.dataset.ready = "1";
     form.addEventListener("submit", async (event) => {
@@ -378,15 +379,23 @@
       const button = $("button", form);
       try {
         const data = await postForm(form);
-        button.classList.toggle("republished", data.republished);
-        button.setAttribute("aria-pressed", String(data.republished));
+        button.classList.toggle(className, data[key]);
+        button.setAttribute("aria-pressed", String(data[key]));
         const count = $("[data-repost-count]", button);
-        if (count) count.textContent = data.count;
-        showToast(data.republished ? "Publication republiée sur votre profil." : "Republication annulée.", "info");
+        if (count && "count" in data) count.textContent = data.count;
+        showToast(data[key] ? onMessage : offMessage, "info");
       } catch (error) {
         form.submit();
       }
     });
+  }
+
+  function initRepostForm(form) {
+    initToggleForm(form, "republished", "republished", "Publication republiée sur votre profil.", "Republication annulée.");
+  }
+
+  function initSaveForm(form) {
+    initToggleForm(form, "saved", "saved", "Publication enregistrée.", "Publication retirée des enregistrements.");
   }
 
   function initFollowForm(form) {
@@ -572,6 +581,7 @@
     $$("[data-toggle-target]", root).forEach(initToggle);
     $$("form[data-like-form]", root).forEach(initLikeForm);
     $$("form[data-repost-form]", root).forEach(initRepostForm);
+    $$("form[data-save-form]", root).forEach(initSaveForm);
     $$("form[data-follow-form]", root).forEach(initFollowForm);
     $$("[data-share-url]", root).forEach(initShare);
     $$("form[data-confirm]", root).forEach(initConfirm);

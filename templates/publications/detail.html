@@ -148,6 +148,11 @@
         <span class="action-btn action-static" title="Republications">{% icon "repeat" %}<span>{{ post.republish_count }}</span></span>
       {% endif %}
       <button type="button" class="action-btn" data-share-url="{{ post.get_absolute_url }}">{% icon "share" %}<span>Partager</span></button>
+      <form method="post" action="{% url 'publications:save_toggle' post.pk %}" data-save-form>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.get_full_path }}">
+        <button type="submit" class="action-btn{% if post.saved %} saved{% endif %}" aria-pressed="{{ post.saved|yesno:'true,false' }}" aria-label="Enregistrer">{% icon "bookmark" %}</button>
+      </form>
       {% if user.pk != post.author_id %}
         <a class="action-btn action-end" href="{% url 'moderation:report' post.pk %}">{% icon "flag" %}<span>Signaler</span></a>
       {% endif %}

@@ -39,6 +39,9 @@
     <nav class="feed-tabs profile-tabs" aria-label="Contenu du profil">
       <a href="?vue={{ view }}" class="{% if tab == 'publications' %}tab-active{% endif %}"{% if tab == 'publications' %} aria-current="page"{% endif %}>{% icon "grid" 16 %}Publications</a>
       <a href="?onglet=republications&amp;vue={{ view }}" class="{% if tab == 'republications' %}tab-active{% endif %}"{% if tab == 'republications' %} aria-current="page"{% endif %}>{% icon "repeat" 16 %}Republications · {{ republications_count }}</a>
+      {% if is_me %}
+        <a href="?onglet=enregistres&amp;vue={{ view }}" class="{% if tab == 'enregistres' %}tab-active{% endif %}"{% if tab == 'enregistres' %} aria-current="page"{% endif %}>{% icon "bookmark" 16 %}Enregistrés</a>
+      {% endif %}
     </nav>
     <div>
       <a class="icon-btn{% if view == 'grille' %} icon-btn-active{% endif %}" href="?onglet={{ tab }}&amp;vue=grille" aria-label="Vue en grille"{% if view == 'grille' %} aria-current="true"{% endif %}>{% icon "grid" %}</a>

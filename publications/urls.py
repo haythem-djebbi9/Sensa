@@ -12,4 +12,5 @@ urlpatterns = [
     path("<uuid:pk>/supprimer/", views.delete, name="delete"),
     path("<uuid:pk>/relancer/", views.retry, name="retry"),
     path("<uuid:pk>/republier/", views.republish_toggle, name="republish_toggle"),
+    path("<uuid:pk>/enregistrer/", views.save_toggle, name="save_toggle"),
 ]

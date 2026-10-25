@@ -220,6 +220,8 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .liked { color: #bd3142; }
 .liked .icon { fill: var(--color-corail); }
 .republished { color: var(--color-sensa); }
+.saved { color: var(--color-nuit); }
+.saved .icon { fill: currentColor; }
 .action-static { cursor: default; }
 .action-static:hover { background: transparent; color: var(--color-ardoise); }
 

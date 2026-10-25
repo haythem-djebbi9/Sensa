@@ -105,6 +105,11 @@
       <span class="action-btn action-static" title="Republications">{% icon "repeat" %}<span>{{ post.republish_count }}</span></span>
     {% endif %}
     <button type="button" class="action-btn" data-share-url="{{ post.get_absolute_url }}">{% icon "share" %}<span>Partager</span></button>
-    <a class="action-btn action-end" href="{{ post.get_absolute_url }}" aria-label="Ouvrir la publication">{% icon "arrow" %}</a>
+    <form method="post" action="{% url 'publications:save_toggle' post.pk %}" data-save-form>
+      {% csrf_token %}
+      <input type="hidden" name="next" value="{% if card_mode %}{{ post.get_absolute_url }}{% else %}{{ request.get_full_path }}{% endif %}">
+      <button type="submit" class="action-btn action-end{% if post.saved %} saved{% endif %}" aria-pressed="{{ post.saved|yesno:'true,false' }}" aria-label="Enregistrer">{% icon "bookmark" %}</button>
+    </form>
+    <a class="action-btn" href="{{ post.get_absolute_url }}" aria-label="Ouvrir la publication">{% icon "arrow" %}</a>
   </div>
 </article>

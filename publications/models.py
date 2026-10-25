@@ -1,4 +1,4 @@
-"""Module 1 — Publications (Hiba Chaabani) : Publication, Image, Audio, Republication."""
+"""Module 1 — Publications (Hiba Chaabani) : Publication, Image, Audio, Republication, Enregistrement."""
 
 import uuid
 
@@ -204,3 +204,22 @@ class Republication(models.Model):
 
     def __str__(self):
         return f"{self.member} republie {self.publication_id}"
+
+
+class Enregistrement(models.Model):
+    """Publication enregistrée par un membre pour la retrouver plus tard (visible par lui seul)."""
+
+    publication = models.ForeignKey(Publication, on_delete=models.CASCADE, related_name="enregistrements")
+    member = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="enregistrements", verbose_name="membre"
+    )
+    created_at = models.DateTimeField("enregistrée le", auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "enregistrement"
+        verbose_name_plural = "enregistrements"
+        constraints = [models.UniqueConstraint(fields=["publication", "member"], name="enregistrement_unique")]
+
+    def __str__(self):
+        return f"{self.member} enregistre {self.publication_id}"

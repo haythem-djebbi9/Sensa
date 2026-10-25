@@ -18,7 +18,7 @@ from social.services import annotate_social, notify
 from social.views import CommentForm
 
 from .forms import PublicationEditForm, PublicationForm
-from .models import Publication, Republication
+from .models import Enregistrement, Publication, Republication
 
 
 def posts_last_hour(user):
@@ -145,4 +145,18 @@ def republish_toggle(request, pk):
     count = publication.republications.count()
     if request.headers.get("X-Requested-With") == "fetch":
         return JsonResponse({"republished": republished, "count": count})
+    return redirect(safe_next(request, publication.get_absolute_url()) + f"#post-{publication.pk}")
+
+
+@login_required
+@require_POST
+def save_toggle(request, pk):
+    """Enregistrer un post pour plus tard (ou le retirer des enregistrements)."""
+    publication = get_object_or_404(Publication.objects.visible_to(request.user), pk=pk)
+    deleted, _ = Enregistrement.objects.filter(publication=publication, member=request.user).delete()
+    saved = not deleted
+    if saved:
+        Enregistrement.objects.get_or_create(publication=publication, member=request.user)
+    if request.headers.get("X-Requested-With") == "fetch":
+        return JsonResponse({"saved": saved})
     return redirect(safe_next(request, publication.get_absolute_url()) + f"#post-{publication.pk}")

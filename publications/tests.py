@@ -10,7 +10,7 @@ from core.testing import SensaTestCase, image_upload, make_member, wav_upload
 from enrichment.models import AnalyseIA
 
 from . import ai
-from .models import Publication, Republication
+from .models import Enregistrement, Publication, Republication
 
 
 def phone_photo_upload():
@@ -435,3 +435,43 @@ class EditKeepsModerationTests(SensaTestCase):
         self.client.force_login(self.lina)
         self.edit()
         self.assertEqual(self.post.status, Publication.Status.UNDER_REVIEW)
+
+
+class SavedPostsTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.noah = make_member("noah")
+        self.post = Publication.objects.create(author=self.lina, text="Recette du couscous", status=Publication.Status.READY)
+        self.url = reverse("publications:save_toggle", args=[self.post.pk])
+        self.client.force_login(self.noah)
+
+    def test_save_then_unsave(self):
+        self.assertEqual(self.client.post(self.url, headers={"X-Requested-With": "fetch"}).json(), {"saved": True})
+        self.assertEqual(self.client.post(self.url, headers={"X-Requested-With": "fetch"}).json(), {"saved": False})
+        self.assertFalse(Enregistrement.objects.exists())
+
+    def test_own_post_can_be_saved(self):
+        self.client.force_login(self.lina)
+        self.client.post(self.url)
+        self.assertTrue(Enregistrement.objects.filter(member=self.lina).exists())
+
+    def test_saved_tab_is_private(self):
+        Enregistrement.objects.create(publication=self.post, member=self.noah)
+        response = self.client.get(reverse("accounts:profile", args=["noah"]), {"onglet": "enregistres"})
+        self.assertEqual(list(response.context["posts"]), [self.post])
+        self.assertContains(response, "Enregistrés")
+        self.client.force_login(self.lina)
+        response = self.client.get(reverse("accounts:profile", args=["noah"]), {"onglet": "enregistres"})
+        self.assertEqual(response.context["tab"], "publications")
+        self.assertNotContains(response, "Enregistrés")
+
+    def test_hidden_post_leaves_saved_tab(self):
+        Enregistrement.objects.create(publication=self.post, member=self.noah)
+        Publication.objects.filter(pk=self.post.pk).update(status=Publication.Status.BLOCKED)
+        response = self.client.get(reverse("accounts:profile", args=["noah"]), {"onglet": "enregistres"})
+        self.assertEqual(list(response.context["posts"]), [])
+
+    def test_card_shows_saved_state(self):
+        Enregistrement.objects.create(publication=self.post, member=self.noah)
+        response = self.client.get(reverse("publications:card", args=[self.post.pk]))
+        self.assertContains(response, 'class="action-btn action-end saved"')
