@@ -3,7 +3,9 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.core.exceptions import PermissionDenied
+from django.core.cache import cache as rate_cache
+from django.core.exceptions import PermissionDenied, ValidationError
+from django.core.files.base import ContentFile
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -11,14 +13,16 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from accounts.views import safe_next
-from enrichment import pipeline
+from enrichment import cache, pipeline
 from enrichment.models import AnalyseIA
 from social.models import Notification
 from social.services import annotate_social, notify
 from social.views import CommentForm
 
-from .forms import PublicationEditForm, PublicationForm
-from .models import Enregistrement, Publication, Republication
+from . import ai
+from .forms import PublicationEditForm, PublicationForm, strip_image_metadata
+from .models import Enregistrement, Image, Publication, Republication
+from .validators import validate_image_upload
 
 
 def posts_last_hour(user):
@@ -164,3 +168,33 @@ def save_toggle(request, pk):
     if request.headers.get("X-Requested-With") == "fetch":
         return JsonResponse({"saved": saved})
     return redirect(safe_next(request, publication.get_absolute_url()) + f"#post-{publication.pk}")
+
+
+@login_required
+@require_POST
+def suggest_alt_text(request):
+    """Propose un texte alternatif pour l'image choisie dans le formulaire, avant publication."""
+    upload = request.FILES.get("image")
+    if upload is None:
+        return JsonResponse({"error": "Aucune image reçue."}, status=400)
+    counter = f"suggestions-texte-alternatif:{request.user.pk}"
+    rate_cache.add(counter, 0, timeout=3600)
+    if rate_cache.incr(counter) > settings.SENSA_ALT_SUGGESTIONS_PER_HOUR:
+        return JsonResponse({"error": "Trop de suggestions demandées : réessayez dans une heure."}, status=429)
+    try:
+        validate_image_upload(upload)
+    except ValidationError as error:
+        return JsonResponse({"error": error.messages[0]}, status=400)
+    # Mêmes octets que l'image qui sera publiée : la description mise en cache ici
+    # est réutilisée par le pipeline, l'image n'est donc analysée qu'une fois.
+    data = strip_image_metadata(upload).read()
+    key = cache.make_key(AnalyseIA.Type.DESCRIPTION, ContentFile(data))
+    hit = cache.lookup(key)
+    if hit is not None:
+        description, provider = hit.result.get("description", ""), hit.provider
+    else:
+        description, provider = ai.describe_image_data(data)
+        if provider != "description-basique":
+            cache.store(key, AnalyseIA.Type.DESCRIPTION, {"description": description}, provider)
+    alt_text = ai.shorten(description, Image._meta.get_field("alt_text").max_length)
+    return JsonResponse({"alt_text": alt_text, "approximate": provider == "description-basique"})

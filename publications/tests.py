@@ -249,7 +249,7 @@ class DescribeBasicTests(SensaTestCase):
     def test_respects_exif_orientation(self):
         post = Publication.objects.create(author=make_member("lina"), text="Photo")
         image = post.images.create(file=phone_photo_upload())
-        self.assertIn("au format portrait", ai.describe_basic(image))
+        self.assertIn("au format portrait", ai.describe_image(image)[0])
 
 
 class MediaFileDeletionTests(SensaTestCase):
@@ -556,3 +556,75 @@ class EditMediaTests(SensaTestCase):
         post = self.create(image=[image_upload()])
         self.edit(post, {"alt_text": "Le port de Bizerte"})
         self.assertEqual(post.images.get().alt_text, "Le port de Bizerte")
+
+
+class AltTextSuggestionTests(SensaTestCase):
+    url = "/publications/suggerer-texte-alternatif/"
+
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+
+    def suggest(self, upload=None):
+        return self.client.post(self.url, {"image": upload or image_upload()}, headers={"X-Requested-With": "fetch"})
+
+    def test_suggestion_from_vision_model(self):
+        with mock.patch("publications.ai.llm.is_configured", return_value=True), \
+                mock.patch("publications.ai.describe_with_llm", return_value=("Une plage au coucher du soleil.", "groq")):
+            response = self.suggest()
+        self.assertEqual(response.json(), {"alt_text": "Une plage au coucher du soleil.", "approximate": False})
+
+    def test_basic_description_flagged_as_approximate(self):
+        with mock.patch("publications.ai.llm.is_configured", return_value=False):
+            data = self.suggest().json()
+        self.assertTrue(data["approximate"])
+        self.assertTrue(data["alt_text"].startswith("Image "))
+
+    def test_suggestion_reused_when_publishing(self):
+        upload = image_upload("plage.png", color=(30, 120, 220))
+        with mock.patch("publications.ai.llm.is_configured", return_value=True), \
+                mock.patch("publications.ai.describe_with_llm", return_value=("Une plage.", "groq")) as describe:
+            self.suggest(upload)
+            upload.seek(0)
+            self.publish(self.client, {"text": "", "alt_text": "Une plage."}, {"image": upload})
+        self.assertEqual(describe.call_count, 1)
+        analysis = Publication.objects.get().analyses.get(type=AnalyseIA.Type.DESCRIPTION)
+        self.assertTrue(analysis.cached)
+
+    def test_invalid_image_rejected(self):
+        fake = SimpleUploadedFile("photo.png", b"pas une image", content_type="image/png")
+        response = self.suggest(fake)
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.json()["error"], "Ce fichier n'est pas une image valide.")
+
+    @override_settings(SENSA_ALT_SUGGESTIONS_PER_HOUR=2)
+    def test_rate_limited(self):
+        with mock.patch("publications.ai.llm.is_configured", return_value=False):
+            statuses = [self.suggest().status_code for _ in range(3)]
+        self.assertEqual(statuses, [200, 200, 429])
+
+    def test_login_and_post_required(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+        self.client.logout()
+        self.assertEqual(self.client.post(self.url).status_code, 302)
+
+    def test_long_suggestion_cut_after_last_full_sentence(self):
+        long_text = "Un diagramme de cas d'utilisation. " + "Un acteur relié à plusieurs actions du système " * 8
+        with mock.patch("publications.ai.llm.is_configured", return_value=True), \
+                mock.patch("publications.ai.describe_with_llm", return_value=(long_text, "groq")):
+            alt_text = self.suggest().json()["alt_text"]
+        self.assertLessEqual(len(alt_text), 300)
+        self.assertTrue(alt_text.endswith("…") or alt_text.endswith("."))
+        self.assertNotIn("  ", alt_text)
+
+
+class ShortenTests(SensaTestCase):
+    def test_short_text_unchanged(self):
+        self.assertEqual(ai.shorten("Une plage.", 300), "Une plage.")
+
+    def test_cut_after_last_sentence(self):
+        text = "Première phrase assez longue pour compter. Deuxième phrase. Troisième phrase coupée ici"
+        self.assertEqual(ai.shorten(text, 70), "Première phrase assez longue pour compter. Deuxième phrase.")
+
+    def test_cut_after_last_word_without_sentence(self):
+        self.assertEqual(ai.shorten("un deux trois quatre cinq six", 16), "un deux trois…")

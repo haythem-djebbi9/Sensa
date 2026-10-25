@@ -6,6 +6,7 @@ app_name = "publications"
 
 urlpatterns = [
     path("nouvelle/", views.create, name="create"),
+    path("suggerer-texte-alternatif/", views.suggest_alt_text, name="suggest_alt_text"),
     path("<uuid:pk>/", views.detail, name="detail"),
     path("<uuid:pk>/carte/", views.card, name="card"),
     path("<uuid:pk>/modifier/", views.edit, name="edit"),

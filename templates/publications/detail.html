@@ -49,7 +49,7 @@
         <figcaption class="description-box">
           {% if image.description_ia %}
             {% badge "ai" "Description IA" %}
-            <p>{{ image.description_ia }}{% if image.alt_text %}<span class="alt-author">Texte alternatif de l'auteur : {{ image.alt_text }}</span>{% endif %}</p>
+            <p>{{ image.description_ia }}{% if image.alt_text and image.alt_text != image.description_ia %}<span class="alt-author">Texte alternatif de l'auteur : {{ image.alt_text }}</span>{% endif %}</p>
           {% elif image.alt_text %}
             {% badge "review" "Texte alternatif" "user" %}
             <p>{{ image.alt_text }}</p>
