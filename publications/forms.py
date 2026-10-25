@@ -1,9 +1,31 @@
+import io
+
 from django import forms
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.db import transaction
 
 from .models import Audio, Image, Publication
 from .validators import read_audio_duration, validate_audio_upload, validate_image_upload
+
+
+def strip_image_metadata(upload):
+    """Ré-encode l'image sans ses métadonnées EXIF (position GPS, appareil…), orientation appliquée."""
+    from PIL import Image as PILImage
+    from PIL import ImageOps
+
+    upload.seek(0)
+    buffer = io.BytesIO()
+    with PILImage.open(upload) as img:
+        image_format = img.format
+        options = {"icc_profile": img.info.get("icc_profile")}
+        if image_format in ("JPEG", "WEBP"):
+            options["quality"] = 90
+        if getattr(img, "n_frames", 1) > 1:
+            img.save(buffer, format=image_format, save_all=True, **options)
+        else:
+            ImageOps.exif_transpose(img).save(buffer, format=image_format, **options)
+    return ContentFile(buffer.getvalue(), name=upload.name)
 
 
 class PublicationForm(forms.ModelForm):
@@ -23,7 +45,6 @@ class PublicationForm(forms.ModelForm):
         required=False,
         widget=forms.FileInput(attrs={"accept": "audio/*", "data-audio-input": ""}),
     )
-    audio_duration = forms.FloatField(required=False, min_value=0, widget=forms.HiddenInput(attrs={"data-audio-duration": ""}))
 
     class Meta:
         model = Publication
@@ -62,11 +83,10 @@ class PublicationForm(forms.ModelForm):
         if not (text or image or audio) and not self.errors:
             raise forms.ValidationError("Ajoutez un texte, une image ou un audio avant de publier.")
         if audio:
-            measured = read_audio_duration(audio)
-            reported = cleaned.get("audio_duration")
-            seconds = measured if measured is not None else reported
+            # La durée est mesurée sur le fichier : celle annoncée par le navigateur est modifiable.
+            seconds = read_audio_duration(audio)
             if seconds is None:
-                self.add_error("audio", "Durée audio illisible : utilisez un fichier MP3, M4A, OGG ou WAV.")
+                self.add_error("audio", "Durée audio illisible : utilisez un fichier WebM, MP3, M4A, OGG ou WAV.")
             elif seconds > settings.SENSA_MAX_AUDIO_SECONDS + 1:
                 self.add_error("audio", "L'audio ne doit pas dépasser 3 minutes.")
             else:
@@ -82,7 +102,9 @@ class PublicationForm(forms.ModelForm):
         publication.save()
         image = self.cleaned_data.get("image")
         if image:
-            Image.objects.create(publication=publication, file=image, alt_text=self.cleaned_data.get("alt_text", ""))
+            Image.objects.create(
+                publication=publication, file=strip_image_metadata(image), alt_text=self.cleaned_data.get("alt_text", "")
+            )
         audio = self.cleaned_data.get("audio")
         if audio:
             Audio.objects.create(publication=publication, file=audio, duration=self.audio_seconds)

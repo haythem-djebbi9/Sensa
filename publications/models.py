@@ -1,4 +1,4 @@
-"""Module 1 — Publications (Hiba Chaabani) : Publication, Image, Audio."""
+"""Module 1 — Publications (Hiba Chaabani) : Publication, Image, Audio, Republication."""
 
 import uuid
 
@@ -120,6 +120,14 @@ class Publication(models.Model):
         return user.is_authenticated and (user.pk == self.author_id or user.is_moderator)
 
     @property
+    def is_republishable(self):
+        """Seules les publications publiques déjà validées par l'IA peuvent être republiées."""
+        return self.status == self.Status.READY and self.visibility == self.Visibility.PUBLIC
+
+    def can_republish(self, user):
+        return user.is_authenticated and user.pk != self.author_id and self.is_republishable
+
+    @property
     def excerpt(self):
         text = (self.text or "").strip().replace("\n", " ")
         return text[:90] + ("…" if len(text) > 90 else "")
@@ -176,3 +184,23 @@ class Audio(models.Model):
         if self.transcription:
             return [{"start": 0, "text": self.transcription}]
         return []
+
+
+class Republication(models.Model):
+    """Republication d'un post par un membre, comme sur Instagram : le post original est
+    repartagé tel quel, sans copie. Il disparaît des republications si l'original n'est plus visible."""
+
+    publication = models.ForeignKey(Publication, on_delete=models.CASCADE, related_name="republications")
+    member = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="republications", verbose_name="membre"
+    )
+    created_at = models.DateTimeField("republiée le", auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "republication"
+        verbose_name_plural = "republications"
+        constraints = [models.UniqueConstraint(fields=["publication", "member"], name="republication_unique")]
+
+    def __str__(self):
+        return f"{self.member} republie {self.publication_id}"

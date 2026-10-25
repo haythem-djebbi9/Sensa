@@ -3,7 +3,7 @@ from django.urls import reverse
 from core.testing import SensaTestCase, make_member
 from enrichment import pipeline
 from enrichment.models import Tag
-from publications.models import Audio, Publication
+from publications.models import Audio, Publication, Republication
 from social.models import Abonnement, Reaction
 
 from . import services
@@ -49,6 +49,54 @@ class HomeFeedTests(FeedTestCase):
         response = self.client.get(reverse("feed:home"))
         self.assertIn(post, list(response.context["page"]))
         self.assertFalse(response.context["follows_someone"])
+
+
+class RepublicationFeedTests(FeedTestCase):
+    def setUp(self):
+        self.lina, self.maya, self.noah = make_member("lina"), make_member("maya"), make_member("noah")
+        Abonnement.objects.create(follower=self.lina, followed=self.maya)
+        self.noah_post = self.make_post(self.noah, "Coucher de soleil à Sidi Bou Saïd")
+        self.maya_post = self.make_post(self.maya, "Mon café du matin")
+        self.client.force_login(self.lina)
+
+    def feed(self):
+        return list(self.client.get(reverse("feed:home")).context["page"])
+
+    def test_repost_by_followed_member_appears_on_top_with_label(self):
+        Republication.objects.create(publication=self.noah_post, member=self.maya)
+        posts = self.feed()
+        self.assertEqual(posts, [self.noah_post, self.maya_post])
+        self.assertEqual(posts[0].reposted_by_id, self.maya.pk)
+        response = self.client.get(reverse("feed:home"))
+        self.assertContains(response, "a republié")
+
+    def test_post_listed_once_when_reposted_twice(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        Abonnement.objects.create(follower=self.lina, followed=self.noah)
+        karim = make_member("karim")
+        Abonnement.objects.create(follower=self.lina, followed=karim)
+        Republication.objects.create(publication=self.noah_post, member=self.maya)
+        latest = Republication.objects.create(publication=self.noah_post, member=karim)
+        Republication.objects.filter(pk=latest.pk).update(created_at=timezone.now() + timedelta(minutes=1))
+        posts = self.feed()
+        self.assertEqual(posts.count(self.noah_post), 1)
+        self.assertEqual(posts[0].reposted_by_id, karim.pk)
+
+    def test_own_repost_labelled_for_me(self):
+        Republication.objects.create(publication=self.noah_post, member=self.lina)
+        self.assertContains(self.client.get(reverse("feed:home")), "Vous avez republié")
+
+    def test_repost_by_stranger_not_shown(self):
+        Republication.objects.create(publication=self.maya_post, member=make_member("karim"))
+        self.assertNotIn(self.noah_post, self.feed())
+
+    def test_blocked_original_disappears(self):
+        Republication.objects.create(publication=self.noah_post, member=self.maya)
+        Publication.objects.filter(pk=self.noah_post.pk).update(status=Publication.Status.BLOCKED)
+        self.assertNotIn(self.noah_post, self.feed())
 
 
 class SearchTests(FeedTestCase):

@@ -196,7 +196,6 @@
   function initRecorder(tile) {
     const button = $("[data-record-toggle]", tile);
     const input = $("[data-audio-input]", tile.closest("form"));
-    const durationInput = $("[data-audio-duration]", tile.closest("form"));
     const title = $("[data-record-title]", tile);
     const hint = $("[data-record-hint]", tile);
     const icon = $(".record-icon", tile);
@@ -219,7 +218,6 @@
       const transfer = new DataTransfer();
       transfer.items.add(file);
       input.files = transfer.files;
-      if (durationInput) durationInput.value = seconds.toFixed(2);
       preview.src = URL.createObjectURL(file);
       preview.hidden = false;
       tile.classList.add("has-audio");
@@ -228,7 +226,6 @@
 
     function clearAudio() {
       input.value = "";
-      if (durationInput) durationInput.value = "";
       preview.hidden = true;
       preview.removeAttribute("src");
       tile.classList.remove("has-audio");
@@ -301,7 +298,6 @@
           clearAudio();
           return;
         }
-        if (durationInput) durationInput.value = seconds ? seconds.toFixed(2) : "";
         preview.src = probe.src;
         preview.hidden = false;
         tile.classList.add("has-audio");
@@ -334,6 +330,25 @@
         button.setAttribute("aria-pressed", String(data.liked));
         const count = $("[data-like-count]", button);
         if (count) count.textContent = data.count;
+      } catch (error) {
+        form.submit();
+      }
+    });
+  }
+
+  function initRepostForm(form) {
+    if (form.dataset.ready) return;
+    form.dataset.ready = "1";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = $("button", form);
+      try {
+        const data = await postForm(form);
+        button.classList.toggle("republished", data.republished);
+        button.setAttribute("aria-pressed", String(data.republished));
+        const count = $("[data-repost-count]", button);
+        if (count) count.textContent = data.count;
+        showToast(data.republished ? "Publication republiée sur votre profil." : "Republication annulée.", "info");
       } catch (error) {
         form.submit();
       }
@@ -521,6 +536,7 @@
     $$("[data-audio-player]", root).forEach(initAudioPlayer);
     $$("[data-toggle-target]", root).forEach(initToggle);
     $$("form[data-like-form]", root).forEach(initLikeForm);
+    $$("form[data-repost-form]", root).forEach(initRepostForm);
     $$("form[data-follow-form]", root).forEach(initFollowForm);
     $$("[data-share-url]", root).forEach(initShare);
     $$("form[data-confirm]", root).forEach(initConfirm);

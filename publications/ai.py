@@ -59,6 +59,7 @@ def describe_with_blip(image):
         raise AIError("Modèles locaux désactivés.")
     try:
         from PIL import Image as PILImage
+        from PIL import ImageOps
         from transformers import pipeline
     except ImportError as exc:
         raise AIError("transformers n'est pas installé.") from exc
@@ -66,7 +67,7 @@ def describe_with_blip(image):
         _caption_pipeline = pipeline("image-to-text", model=settings.SENSA_CAPTION_MODEL)
     with image.file.open("rb") as handle:
         with PILImage.open(handle) as img:
-            result = _caption_pipeline(img.convert("RGB"))
+            result = _caption_pipeline(ImageOps.exif_transpose(img).convert("RGB"))
     caption = (result[0].get("generated_text") or "").strip() if result else ""
     if not caption:
         raise AIError("Légende vide.")
@@ -101,9 +102,12 @@ def _color_name(rgb):
 def describe_basic(image):
     """Dernier repli : description factuelle calculée à partir des pixels."""
     from PIL import Image as PILImage
+    from PIL import ImageOps
 
     with image.file.open("rb") as handle:
         with PILImage.open(handle) as img:
+            # Les photos de téléphone sont souvent stockées couchées, avec l'orientation dans l'EXIF.
+            img = ImageOps.exif_transpose(img)
             width, height = img.size
             small = img.convert("RGB").resize((64, 64))
     quantized = small.quantize(colors=5)

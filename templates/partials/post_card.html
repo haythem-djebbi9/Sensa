@@ -3,6 +3,9 @@
   {% if post.reason %}
     <div class="post-reason">{% icon post.reason_icon|default:"spark" 15 %}{{ post.reason }}</div>
   {% endif %}
+  {% if post.reposted_by_id %}
+    <div class="post-reason">{% icon "repeat" 15 %}{% if post.reposted_by_id == user.pk %}Vous avez republié{% else %}<a href="{% url 'accounts:profile' post.reposted_by_username %}">{{ post.reposted_by_name|default:post.reposted_by_username }}</a> a republié{% endif %}</div>
+  {% endif %}
   <div class="post-head">
     <div class="person">
       <a href="{{ post.author.get_absolute_url }}">{% avatar post.author %}</a>
@@ -80,6 +83,17 @@
       </button>
     </form>
     <a class="action-btn" href="{{ post.get_absolute_url }}#commentaires" aria-label="Commentaires">{% icon "message" %}<span>{{ post.comment_count|default:0 }}</span></a>
+    {% if user.pk != post.author_id and post.republished or user.pk != post.author_id and post.is_republishable %}
+      <form method="post" action="{% url 'publications:republish_toggle' post.pk %}" data-repost-form>
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{% if card_mode %}{{ post.get_absolute_url }}{% else %}{{ request.get_full_path }}{% endif %}">
+        <button type="submit" class="action-btn{% if post.republished %} republished{% endif %}" aria-pressed="{{ post.republished|yesno:'true,false' }}" aria-label="Republier">
+          {% icon "repeat" %}<span data-repost-count>{{ post.republish_count|default:0 }}</span>
+        </button>
+      </form>
+    {% elif post.republish_count %}
+      <span class="action-btn action-static" title="Republications">{% icon "repeat" %}<span>{{ post.republish_count }}</span></span>
+    {% endif %}
     <button type="button" class="action-btn" data-share-url="{{ post.get_absolute_url }}">{% icon "share" %}<span>Partager</span></button>
     <a class="action-btn action-end" href="{{ post.get_absolute_url }}" aria-label="Ouvrir la publication">{% icon "arrow" %}</a>
   </div>

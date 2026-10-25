@@ -209,6 +209,9 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .action-end { margin-left: auto; }
 .liked { color: #bd3142; }
 .liked .icon { fill: var(--color-corail); }
+.republished { color: var(--color-sensa); }
+.action-static { cursor: default; }
+.action-static:hover { background: transparent; color: var(--color-ardoise); }
 
 /* --- Menu contextuel --- */
 .menu { position: relative; }
@@ -387,6 +390,7 @@ fieldset { margin: 0; padding: 0; min-width: 0; }
 .stats span { margin-top: 0.15rem; color: var(--color-ardoise); font-size: 0.7rem; }
 .stats a:hover strong { color: var(--color-sensa); }
 .profile-post-head > div { display: flex; }
+.profile-tabs { margin-bottom: 0; }
 .profile-posts { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.8rem; }
 .profile-tile { position: relative; min-height: 14rem; overflow: hidden; padding: 1rem; border: 0; border-radius: 1rem; text-align: left; cursor: pointer; display: block; }
 .image-tile { padding: 0; background: var(--color-lavande); }

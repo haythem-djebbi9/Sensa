@@ -80,6 +80,7 @@ class Notification(models.Model):
         LIKE = "like", "J'aime"
         COMMENT = "comment", "Commentaire"
         FOLLOW = "follow", "Nouvel abonné"
+        REPUBLISH = "republish", "Republication"
         AI_READY = "ai_ready", "Publication enrichie"
         AI_FAILED = "ai_failed", "Échec de l'analyse IA"
         MODERATION = "moderation", "Modération"
@@ -118,6 +119,7 @@ class Notification(models.Model):
             self.Type.LIKE: f"{actor} a aimé votre publication",
             self.Type.COMMENT: f"{actor} a commenté votre publication",
             self.Type.FOLLOW: f"{actor} vous suit désormais",
+            self.Type.REPUBLISH: f"{actor} a republié votre publication",
             self.Type.AI_READY: "Votre publication est prête",
             self.Type.AI_FAILED: "L'analyse IA a échoué",
             self.Type.MODERATION: "Décision de modération",
@@ -129,6 +131,7 @@ class Notification(models.Model):
             self.Type.LIKE: ("heart", "coral"),
             self.Type.COMMENT: ("message", "violet"),
             self.Type.FOLLOW: ("user", "mint"),
+            self.Type.REPUBLISH: ("repeat", "mint"),
             self.Type.AI_READY: ("spark", "ai"),
             self.Type.AI_FAILED: ("alert", "coral"),
             self.Type.MODERATION: ("shield", "violet"),
