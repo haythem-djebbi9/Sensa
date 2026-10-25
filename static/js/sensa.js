@@ -157,28 +157,35 @@
     update();
   }
 
-  /* ---------- Composer : image ---------- */
+  /* ---------- Composer : images (carrousel) ---------- */
   function initImageInput(input) {
     const tile = input.closest(".upload-tile");
     if (!tile) return;
     const preview = $(".upload-preview img", tile);
+    const count = $("[data-upload-count]", tile);
     const removeButton = $(".preview-remove", tile);
     const altField = document.getElementById("alt-field");
+    const altInput = altField ? $("input", altField) : null;
+    const maxFiles = Number(input.dataset.maxFiles) || 10;
     input.addEventListener("change", () => {
-      const file = input.files && input.files[0];
-      if (!file) return;
-      if (file.size > 10 * 1024 * 1024) {
-        showToast("L'image dépasse 10 Mo.", "error");
+      const files = Array.from(input.files || []);
+      if (!files.length) return;
+      let problem = "";
+      if (files.length > maxFiles) problem = `${maxFiles} images maximum par publication.`;
+      else if (files.some((file) => file.size > 10 * 1024 * 1024)) problem = "Une image dépasse 10 Mo.";
+      else if (files.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type))) problem = "Formats acceptés : JPEG, PNG ou WebP.";
+      if (problem) {
+        showToast(problem, "error");
         input.value = "";
         return;
       }
-      if (!["image/jpeg", "image/png", "image/webp"].includes(file.type)) {
-        showToast("Formats acceptés : JPEG, PNG ou WebP.", "error");
-        input.value = "";
-        return;
+      preview.src = URL.createObjectURL(files[0]);
+      preview.alt = files.length > 1 ? `Aperçu de la première des ${files.length} images` : `Aperçu de ${files[0].name}`;
+      if (count) {
+        count.hidden = files.length < 2;
+        count.textContent = `${files.length} images`;
       }
-      preview.src = URL.createObjectURL(file);
-      preview.alt = `Aperçu de ${file.name}`;
+      if (altInput) altInput.placeholder = files.length > 1 ? "Décrivez la première image — l'IA décrit les autres" : "Décrivez l'image — sinon l'IA s'en charge";
       tile.classList.add("has-file");
       if (altField) altField.hidden = false;
     });
@@ -186,10 +193,37 @@
       removeButton.addEventListener("click", (event) => {
         event.preventDefault();
         input.value = "";
+        if (count) count.hidden = true;
         tile.classList.remove("has-file");
         if (altField) altField.hidden = true;
       });
     }
+  }
+
+  /* ---------- Carrousel d'images ---------- */
+  function initCarousel(carousel) {
+    if (carousel.dataset.ready) return;
+    carousel.dataset.ready = "1";
+    const track = $("[data-carousel-track]", carousel);
+    const counter = $("[data-carousel-count]", carousel);
+    const prev = $("[data-carousel-prev]", carousel);
+    const next = $("[data-carousel-next]", carousel);
+    const total = track.children.length;
+    const current = () => Math.round(track.scrollLeft / track.clientWidth);
+    const update = () => {
+      const index = current();
+      if (counter) counter.textContent = `${index + 1}/${total}`;
+      if (prev) prev.disabled = index === 0;
+      if (next) next.disabled = index >= total - 1;
+    };
+    const go = (step) => {
+      const slide = track.children[Math.min(Math.max(current() + step, 0), total - 1)];
+      track.scrollTo({ left: slide.offsetLeft - track.offsetLeft });
+    };
+    if (prev) prev.addEventListener("click", () => go(-1));
+    if (next) next.addEventListener("click", () => go(1));
+    track.addEventListener("scroll", () => window.requestAnimationFrame(update), { passive: true });
+    update();
   }
 
   /* ---------- Composer : enregistrement audio dans le navigateur ---------- */
@@ -336,7 +370,8 @@
     });
   }
 
-  function initRepostForm(form) {
+  /* Bouton bascule (republier, enregistrer) : `key` est le booléen renvoyé par le serveur. */
+  function initToggleForm(form, key, className, onMessage, offMessage) {
     if (form.dataset.ready) return;
     form.dataset.ready = "1";
     form.addEventListener("submit", async (event) => {
@@ -344,15 +379,23 @@
       const button = $("button", form);
       try {
         const data = await postForm(form);
-        button.classList.toggle("republished", data.republished);
-        button.setAttribute("aria-pressed", String(data.republished));
+        button.classList.toggle(className, data[key]);
+        button.setAttribute("aria-pressed", String(data[key]));
         const count = $("[data-repost-count]", button);
-        if (count) count.textContent = data.count;
-        showToast(data.republished ? "Publication republiée sur votre profil." : "Republication annulée.", "info");
+        if (count && "count" in data) count.textContent = data.count;
+        showToast(data[key] ? onMessage : offMessage, "info");
       } catch (error) {
         form.submit();
       }
     });
+  }
+
+  function initRepostForm(form) {
+    initToggleForm(form, "republished", "republished", "Publication republiée sur votre profil.", "Republication annulée.");
+  }
+
+  function initSaveForm(form) {
+    initToggleForm(form, "saved", "saved", "Publication enregistrée.", "Publication retirée des enregistrements.");
   }
 
   function initFollowForm(form) {
@@ -534,9 +577,11 @@
   /* ---------- Initialisation ---------- */
   function enhance(root) {
     $$("[data-audio-player]", root).forEach(initAudioPlayer);
+    $$("[data-carousel]", root).forEach(initCarousel);
     $$("[data-toggle-target]", root).forEach(initToggle);
     $$("form[data-like-form]", root).forEach(initLikeForm);
     $$("form[data-repost-form]", root).forEach(initRepostForm);
+    $$("form[data-save-form]", root).forEach(initSaveForm);
     $$("form[data-follow-form]", root).forEach(initFollowForm);
     $$("[data-share-url]", root).forEach(initShare);
     $$("form[data-confirm]", root).forEach(initConfirm);

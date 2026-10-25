@@ -5,6 +5,7 @@ def sensa(request):
     """Variables disponibles dans tous les gabarits."""
     context = {
         "SENSA_MAX_TEXT_LENGTH": settings.SENSA_MAX_TEXT_LENGTH,
+        "SENSA_MAX_IMAGES": settings.SENSA_MAX_IMAGES,
         "unread_notifications": 0,
     }
     user = getattr(request, "user", None)

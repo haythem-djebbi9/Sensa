@@ -18,7 +18,7 @@ from social.services import annotate_social, notify
 from social.views import CommentForm
 
 from .forms import PublicationEditForm, PublicationForm
-from .models import Publication, Republication
+from .models import Enregistrement, Publication, Republication
 
 
 def posts_last_hour(user):
@@ -80,11 +80,15 @@ def edit(request, pk):
     publication = get_object_or_404(Publication.objects.for_cards(), pk=pk)
     if not publication.can_edit(request.user):
         raise PermissionDenied("Seul l'auteur peut modifier cette publication.")
-    form = PublicationEditForm(request.POST or None, instance=publication)
+    form = PublicationEditForm(request.POST or None, request.FILES or None, instance=publication)
     if request.method == "POST" and form.is_valid():
         text_changed = "text" in form.changed_data
         form.save()
-        if text_changed:
+        if form.media_changed:
+            # Nouveaux médias : toute l'analyse est refaite (descriptions, transcription, résumé, modération…).
+            pipeline.launch(Publication.objects.get(pk=publication.pk))
+            messages.success(request, "Publication modifiée. L'IA analyse les nouveaux médias.")
+        elif text_changed:
             # Le texte a changé : tags, modération et embedding sont recalculés.
             pipeline.launch(publication, types=[AnalyseIA.Type.TAGS, AnalyseIA.Type.MODERATION, AnalyseIA.Type.EMBEDDING])
             messages.success(request, "Publication modifiée. L'IA réanalyse le nouveau texte.")
@@ -145,4 +149,18 @@ def republish_toggle(request, pk):
     count = publication.republications.count()
     if request.headers.get("X-Requested-With") == "fetch":
         return JsonResponse({"republished": republished, "count": count})
+    return redirect(safe_next(request, publication.get_absolute_url()) + f"#post-{publication.pk}")
+
+
+@login_required
+@require_POST
+def save_toggle(request, pk):
+    """Enregistrer un post pour plus tard (ou le retirer des enregistrements)."""
+    publication = get_object_or_404(Publication.objects.visible_to(request.user), pk=pk)
+    deleted, _ = Enregistrement.objects.filter(publication=publication, member=request.user).delete()
+    saved = not deleted
+    if saved:
+        Enregistrement.objects.get_or_create(publication=publication, member=request.user)
+    if request.headers.get("X-Requested-With") == "fetch":
+        return JsonResponse({"saved": saved})
     return redirect(safe_next(request, publication.get_absolute_url()) + f"#post-{publication.pk}")

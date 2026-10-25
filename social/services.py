@@ -61,8 +61,8 @@ def notify(recipient, notif_type, *, actor=None, publication=None, commentaire=N
 
 
 def annotate_social(queryset, user):
-    """Ajoute like_count, comment_count, republish_count, liked et republished (par l'utilisateur courant)."""
-    from publications.models import Republication
+    """Ajoute like_count, comment_count, republish_count, liked, republished et saved (par l'utilisateur courant)."""
+    from publications.models import Enregistrement, Republication
 
     queryset = queryset.annotate(
         like_count=Count("reactions", distinct=True),
@@ -73,5 +73,6 @@ def annotate_social(queryset, user):
         queryset = queryset.annotate(
             liked=Exists(Reaction.objects.filter(publication=OuterRef("pk"), member=user, type=Reaction.Type.LIKE)),
             republished=Exists(Republication.objects.filter(publication=OuterRef("pk"), member=user)),
+            saved=Exists(Enregistrement.objects.filter(publication=OuterRef("pk"), member=user)),
         )
     return queryset

@@ -10,7 +10,7 @@ from core.testing import SensaTestCase, image_upload, make_member, wav_upload
 from enrichment.models import AnalyseIA
 
 from . import ai
-from .models import Publication, Republication
+from .models import Enregistrement, Publication, Republication
 
 
 def phone_photo_upload():
@@ -70,6 +70,32 @@ class PublishTests(SensaTestCase):
         self.assertEqual(description.status, AnalyseIA.Status.DONE)
         self.assertTrue(description.provider)
 
+    def test_carousel_of_three_images(self):
+        colors = [(200, 40, 40), (40, 200, 40), (40, 40, 200)]
+        files = [image_upload(f"photo{index}.png", color=color) for index, color in enumerate(colors)]
+        self.publish(self.client, {"text": "Ma journée en 3 photos", "alt_text": "Le port au matin"}, {"image": files})
+        post = Publication.objects.get()
+        images = list(post.images.all())
+        self.assertEqual(len(images), 3)
+        self.assertEqual([image.alt_text for image in images], ["Le port au matin", "", ""])
+        self.assertTrue(all(image.description_ia for image in images))
+        self.assertEqual(post.analyses.filter(type=AnalyseIA.Type.DESCRIPTION).count(), 3)
+        response = self.client.get(reverse("publications:card", args=[post.pk]))
+        self.assertContains(response, "data-carousel")
+        self.assertContains(response, "1/3")
+
+    @override_settings(SENSA_MAX_IMAGES=2)
+    def test_too_many_images_rejected(self):
+        files = [image_upload(f"photo{index}.png") for index in range(3)]
+        response = self.publish(self.client, {"text": "test"}, {"image": files})
+        self.assertContains(response, "2 images maximum par publication.")
+        self.assertFalse(Publication.objects.exists())
+
+    def test_single_image_has_no_carousel(self):
+        self.publish(self.client, {"text": ""}, {"image": image_upload()})
+        response = self.client.get(reverse("publications:card", args=[Publication.objects.get().pk]))
+        self.assertNotContains(response, "data-carousel")
+
     def test_empty_post_rejected(self):
         response = self.publish(self.client, {"text": "   "})
         self.assertEqual(response.status_code, 200)
@@ -89,6 +115,13 @@ class PublishTests(SensaTestCase):
     def test_file_size_limit(self):
         response = self.publish(self.client, {"text": "test"}, {"image": image_upload(size=(200, 200))})
         self.assertContains(response, "taille maximale")
+
+    @override_settings(SENSA_MAX_IMAGE_PIXELS=1_000_000)
+    def test_image_pixel_limit(self):
+        # Fichier PNG de quelques Ko, mais un peu plus d'un mégapixel une fois décompressé.
+        response = self.publish(self.client, {"text": "test"}, {"image": image_upload(size=(1001, 1000))})
+        self.assertContains(response, "L&#x27;image est trop grande : 1 mégapixels maximum.")
+        self.assertFalse(Publication.objects.exists())
 
     @override_settings(SENSA_MAX_AUDIO_SECONDS=3)
     def test_audio_longer_than_limit_rejected(self):
@@ -353,3 +386,173 @@ class RepublicationProfileTests(SensaTestCase):
         response = self.client.get(reverse("accounts:profile", args=["lina"]))
         self.assertEqual(response.context["tab"], "publications")
         self.assertEqual(response.context["posts_count"], 2)
+
+
+class EditKeepsModerationTests(SensaTestCase):
+    def setUp(self):
+        from accounts.models import Membre
+
+        self.lina = make_member("lina")
+        self.camille = make_member("camille", role=Membre.Role.MODERATEUR)
+        self.client.force_login(self.lina)
+        self.publish(self.client, {"text": "Un post tout à fait normal"})
+        self.post = Publication.objects.get()
+        self.edit_url = reverse("publications:edit", args=[self.post.pk])
+
+    def decide(self, action):
+        self.client.force_login(self.camille)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("moderation:decide", args=[self.post.pk]), {"action": action})
+        self.client.force_login(self.lina)
+
+    def edit(self, execute=True):
+        with self.captureOnCommitCallbacks(execute=execute):
+            self.client.post(self.edit_url, {"text": "Un post modifié", "visibility": "PUBLIC"})
+        self.post.refresh_from_db()
+
+    def test_moderator_block_survives_edit(self):
+        self.decide("block")
+        self.edit()
+        self.assertEqual(self.post.status, Publication.Status.BLOCKED)
+
+    def test_blocked_post_stays_hidden_during_reanalysis(self):
+        self.decide("block")
+        self.edit(execute=False)
+        self.assertEqual(self.post.status, Publication.Status.BLOCKED)
+
+    def test_edit_after_approval_is_ready(self):
+        self.decide("block")
+        self.decide("approve")
+        self.edit()
+        self.assertEqual(self.post.status, Publication.Status.READY)
+
+    def test_reported_post_stays_under_review_after_edit(self):
+        for name in ("noah", "maya", "karim"):
+            self.client.force_login(make_member(name))
+            self.client.post(reverse("moderation:report", args=[self.post.pk]), {"reason": "SPAM", "details": ""})
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.status, Publication.Status.UNDER_REVIEW)
+        self.client.force_login(self.lina)
+        self.edit()
+        self.assertEqual(self.post.status, Publication.Status.UNDER_REVIEW)
+
+
+class SavedPostsTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.noah = make_member("noah")
+        self.post = Publication.objects.create(author=self.lina, text="Recette du couscous", status=Publication.Status.READY)
+        self.url = reverse("publications:save_toggle", args=[self.post.pk])
+        self.client.force_login(self.noah)
+
+    def test_save_then_unsave(self):
+        self.assertEqual(self.client.post(self.url, headers={"X-Requested-With": "fetch"}).json(), {"saved": True})
+        self.assertEqual(self.client.post(self.url, headers={"X-Requested-With": "fetch"}).json(), {"saved": False})
+        self.assertFalse(Enregistrement.objects.exists())
+
+    def test_own_post_can_be_saved(self):
+        self.client.force_login(self.lina)
+        self.client.post(self.url)
+        self.assertTrue(Enregistrement.objects.filter(member=self.lina).exists())
+
+    def test_saved_tab_is_private(self):
+        Enregistrement.objects.create(publication=self.post, member=self.noah)
+        response = self.client.get(reverse("accounts:profile", args=["noah"]), {"onglet": "enregistres"})
+        self.assertEqual(list(response.context["posts"]), [self.post])
+        self.assertContains(response, "Enregistrés")
+        self.client.force_login(self.lina)
+        response = self.client.get(reverse("accounts:profile", args=["noah"]), {"onglet": "enregistres"})
+        self.assertEqual(response.context["tab"], "publications")
+        self.assertNotContains(response, "Enregistrés")
+
+    def test_hidden_post_leaves_saved_tab(self):
+        Enregistrement.objects.create(publication=self.post, member=self.noah)
+        Publication.objects.filter(pk=self.post.pk).update(status=Publication.Status.BLOCKED)
+        response = self.client.get(reverse("accounts:profile", args=["noah"]), {"onglet": "enregistres"})
+        self.assertEqual(list(response.context["posts"]), [])
+
+    def test_card_shows_saved_state(self):
+        Enregistrement.objects.create(publication=self.post, member=self.noah)
+        response = self.client.get(reverse("publications:card", args=[self.post.pk]))
+        self.assertContains(response, 'class="action-btn action-end saved"')
+
+
+TRANSCRIPTION = {"text": "Bonjour", "language": "fr", "segments": [], "provider": "test"}
+
+
+class EditMediaTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+
+    def create(self, text="Ma publication", **files):
+        with mock.patch("enrichment.ai.transcribe", return_value=TRANSCRIPTION):
+            self.publish(self.client, {"text": text}, files)
+        return Publication.objects.get()
+
+    def edit(self, post, data, files=None):
+        payload = {"text": post.text, "visibility": "PUBLIC", **data, **(files or {})}
+        with mock.patch("enrichment.ai.transcribe", return_value=TRANSCRIPTION), \
+                self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("publications:edit", args=[post.pk]), payload)
+        post.refresh_from_db()
+        return response
+
+    def test_edit_page_lists_media(self):
+        post = self.create(image=[image_upload(), image_upload()], audio=wav_upload())
+        response = self.client.get(reverse("publications:edit", args=[post.pk]))
+        self.assertContains(response, 'name="remove_images"', count=2)
+        self.assertContains(response, 'name="remove_audio"')
+
+    def test_add_image_to_text_post(self):
+        post = self.create()
+        self.edit(post, {}, {"new_images": [image_upload()]})
+        image = post.images.get()
+        self.assertTrue(image.description_ia)
+        self.assertEqual(post.status, Publication.Status.READY)
+
+    def test_remove_one_image(self):
+        post = self.create(image=[image_upload("a.png"), image_upload("b.png")])
+        first, second = post.images.all()
+        storage, name = first.file.storage, first.file.name
+        self.edit(post, {"remove_images": [first.pk]})
+        self.assertEqual(list(post.images.all()), [second])
+        self.assertFalse(storage.exists(name))
+        targets = set(post.analyses.filter(type=AnalyseIA.Type.DESCRIPTION).values_list("target_id", flat=True))
+        self.assertEqual(targets, {str(second.pk)})
+
+    def test_replace_audio(self):
+        post = self.create(audio=wav_upload(seconds=1))
+        old = post.audio
+        self.edit(post, {}, {"audio": wav_upload(seconds=2)})
+        post = Publication.objects.get(pk=post.pk)
+        self.assertNotEqual(post.audio.pk, old.pk)
+        self.assertAlmostEqual(post.audio.duration, 2, delta=0.1)
+        targets = set(post.analyses.filter(type=AnalyseIA.Type.TRANSCRIPTION).values_list("target_id", flat=True))
+        self.assertEqual(targets, {str(post.audio.pk)})
+
+    def test_remove_audio_drops_its_summary(self):
+        post = self.create(audio=wav_upload())
+        self.assertTrue(post.analyses.filter(type=AnalyseIA.Type.SUMMARY).exists())
+        self.edit(post, {"remove_audio": "on"})
+        post = Publication.objects.get(pk=post.pk)
+        self.assertIsNone(post.audio_or_none)
+        self.assertFalse(post.analyses.filter(type__in=[AnalyseIA.Type.SUMMARY, AnalyseIA.Type.TRANSCRIPTION]).exists())
+
+    def test_cannot_remove_everything_without_text(self):
+        post = self.create(text="", image=[image_upload()])
+        response = self.edit(post, {"text": "", "remove_images": [post.images.get().pk]})
+        self.assertContains(response, "Une publication sans média doit contenir du texte.")
+        self.assertEqual(post.images.count(), 1)
+
+    @override_settings(SENSA_MAX_IMAGES=2)
+    def test_image_limit_counts_existing_images(self):
+        post = self.create(image=[image_upload(), image_upload()])
+        response = self.edit(post, {}, {"new_images": [image_upload()]})
+        self.assertContains(response, "2 images maximum par publication.")
+        self.assertEqual(post.images.count(), 2)
+
+    def test_alt_text_of_first_image_still_editable(self):
+        post = self.create(image=[image_upload()])
+        self.edit(post, {"alt_text": "Le port de Bizerte"})
+        self.assertEqual(post.images.get().alt_text, "Le port de Bizerte")

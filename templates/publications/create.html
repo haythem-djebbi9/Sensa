@@ -30,13 +30,14 @@
       <div class="upload-tile{% if form.image.errors %} field-invalid{% endif %}">
         <label class="upload-label" for="{{ form.image.id_for_label }}">
           <span class="upload-icon">{% icon "upload" %}</span>
-          <strong>Ajouter une image</strong>
-          <span>JPEG, PNG ou WebP · 10 Mo maximum</span>
+          <strong>Ajouter des images</strong>
+          <span>JPEG, PNG ou WebP · jusqu'à {{ SENSA_MAX_IMAGES }} images de 10 Mo</span>
         </label>
         {{ form.image }}
         <div class="upload-preview">
           <img alt="">
-          <button type="button" class="preview-remove" aria-label="Retirer l'image">{% icon "x" 16 %}</button>
+          <span class="upload-count" data-upload-count hidden></span>
+          <button type="button" class="preview-remove" aria-label="Retirer les images">{% icon "x" 16 %}</button>
         </div>
       </div>
       <div class="record-tile" data-recorder>
@@ -66,7 +67,7 @@
       <span class="ai-note-icon">{% icon "spark" %}</span>
       <div>
         <strong>L'IA intervient après la publication</strong>
-        <p>Votre post est en ligne immédiatement. En arrière-plan, Sensa ajoute une description de l'image, la transcription de l'audio et des tags pertinents, puis vérifie que le contenu respecte la charte.</p>
+        <p>Votre post est en ligne immédiatement. En arrière-plan, Sensa ajoute une description de chaque image, la transcription de l'audio et des tags pertinents, puis vérifie que le contenu respecte la charte.</p>
       </div>
     </div>
 

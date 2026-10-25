@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Audio, Image, Publication, Republication
+from .models import Audio, Enregistrement, Image, Publication, Republication
 
 
 class ImageInline(admin.TabularInline):
@@ -28,4 +28,10 @@ class PublicationAdmin(admin.ModelAdmin):
 class RepublicationAdmin(admin.ModelAdmin):
     list_display = ("member", "publication", "created_at")
     search_fields = ("member__username", "publication__text")
+    raw_id_fields = ("member", "publication")
+
+
+@admin.register(Enregistrement)
+class EnregistrementAdmin(admin.ModelAdmin):
+    list_display = ("member", "publication", "created_at")
     raw_id_fields = ("member", "publication")
