@@ -56,8 +56,9 @@
     {{ form.audio.errors }}
 
     <div class="composer-options">
-      <div id="alt-field" {% if not form.alt_text.value and not form.image.errors %}hidden{% endif %}>
+      <div id="alt-field" data-suggest-url="{% url 'publications:suggest_alt_text' %}" {% if not form.alt_text.value and not form.image.errors %}hidden{% endif %}>
         {% include "partials/field.html" with field=form.alt_text %}
+        <p class="alt-hint" data-alt-hint aria-live="polite" hidden>{% icon "spark" 14 %}<span data-alt-hint-text></span></p>
       </div>
     </div>
 

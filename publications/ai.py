@@ -27,22 +27,21 @@ DESCRIPTION_SCHEMA = {
 }
 
 
-def prepare_image(file_field, max_side=1568):
+def prepare_image(data, max_side=1568):
     """Réduit et ré-encode l'image en JPEG (< 5 Mo) pour l'envoyer à l'API."""
     from PIL import Image as PILImage
     from PIL import ImageOps
 
-    with file_field.open("rb") as handle:
-        with PILImage.open(handle) as img:
-            img = ImageOps.exif_transpose(img).convert("RGB")
-            img.thumbnail((max_side, max_side))
-            buffer = io.BytesIO()
-            img.save(buffer, format="JPEG", quality=85)
+    with PILImage.open(io.BytesIO(data)) as img:
+        img = ImageOps.exif_transpose(img).convert("RGB")
+        img.thumbnail((max_side, max_side))
+        buffer = io.BytesIO()
+        img.save(buffer, format="JPEG", quality=85)
     return buffer.getvalue(), "image/jpeg"
 
 
-def describe_with_llm(image):
-    result = llm.structured(DESCRIPTION_PROMPT, DESCRIPTION_SCHEMA, image=prepare_image(image.file), max_tokens=1024)
+def describe_with_llm(data):
+    result = llm.structured(DESCRIPTION_PROMPT, DESCRIPTION_SCHEMA, image=prepare_image(data), max_tokens=1024)
     description = (result.data.get("description") or "").strip()
     if not description:
         raise AIError("Description vide.")
@@ -52,7 +51,7 @@ def describe_with_llm(image):
 _caption_pipeline = None
 
 
-def describe_with_blip(image):
+def describe_with_blip(data):
     """Repli open source : modèle de légende BLIP via transformers (optionnel)."""
     global _caption_pipeline
     if not settings.SENSA_USE_LOCAL_MODELS:
@@ -65,9 +64,8 @@ def describe_with_blip(image):
         raise AIError("transformers n'est pas installé.") from exc
     if _caption_pipeline is None:
         _caption_pipeline = pipeline("image-to-text", model=settings.SENSA_CAPTION_MODEL)
-    with image.file.open("rb") as handle:
-        with PILImage.open(handle) as img:
-            result = _caption_pipeline(ImageOps.exif_transpose(img).convert("RGB"))
+    with PILImage.open(io.BytesIO(data)) as img:
+        result = _caption_pipeline(ImageOps.exif_transpose(img).convert("RGB"))
     caption = (result[0].get("generated_text") or "").strip() if result else ""
     if not caption:
         raise AIError("Légende vide.")
@@ -99,17 +97,16 @@ def _color_name(rgb):
     return name
 
 
-def describe_basic(image):
+def describe_basic(data):
     """Dernier repli : description factuelle calculée à partir des pixels."""
     from PIL import Image as PILImage
     from PIL import ImageOps
 
-    with image.file.open("rb") as handle:
-        with PILImage.open(handle) as img:
-            # Les photos de téléphone sont souvent stockées couchées, avec l'orientation dans l'EXIF.
-            img = ImageOps.exif_transpose(img)
-            width, height = img.size
-            small = img.convert("RGB").resize((64, 64))
+    with PILImage.open(io.BytesIO(data)) as img:
+        # Les photos de téléphone sont souvent stockées couchées, avec l'orientation dans l'EXIF.
+        img = ImageOps.exif_transpose(img)
+        width, height = img.size
+        small = img.convert("RGB").resize((64, 64))
     quantized = small.quantize(colors=5)
     palette = quantized.getpalette() or []
     counts = sorted(quantized.getcolors() or [], reverse=True)
@@ -134,23 +131,42 @@ def describe_basic(image):
     return f"Image {shape} aux tons dominants {tones}, plutôt {light}."
 
 
+def shorten(text, limit):
+    """Raccourcit un texte à `limit` caractères en coupant après la dernière phrase complète,
+    ou à défaut après le dernier mot complet."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    end = max(cut.rfind(mark) for mark in (". ", "! ", "? ", ".»", ".\n"))
+    if end >= limit // 2:
+        return cut[: end + 1].strip()
+    return cut[: limit - 1].rsplit(" ", 1)[0].rstrip(",;:") + "…"
+
+
 def describe_image(image, *, last_attempt=True):
-    """Renvoie (description en français, fournisseur utilisé).
+    """Décrit une image publiée (modèle Image) : renvoie (description en français, fournisseur utilisé)."""
+    with image.file.open("rb") as handle:
+        data = handle.read()
+    return describe_image_data(data, last_attempt=last_attempt)
+
+
+def describe_image_data(data, *, last_attempt=True):
+    """Décrit une image à partir de ses octets : renvoie (description en français, fournisseur utilisé).
 
     Tant qu'il reste des tentatives, une erreur passagère de l'API est remontée
     pour que le pipeline relance plus tard ; à la dernière, on bascule en local.
     """
     if llm.is_configured():
         try:
-            return describe_with_llm(image)
+            return describe_with_llm(data)
         except AIError as exc:
             logger.warning("Description par l'API indisponible : %s", exc)
             if not last_attempt:
                 raise
     try:
-        return describe_with_blip(image), "blip-local"
+        return describe_with_blip(data), "blip-local"
     except AIError:
         pass
     except Exception:  # modèle local défaillant
         logger.exception("Erreur du modèle BLIP local")
-    return describe_basic(image), "description-basique"
+    return describe_basic(data), "description-basique"
