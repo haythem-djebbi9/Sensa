@@ -5,7 +5,7 @@
     <a href="{% url 'feed:home' %}" class="{% active 'feed:home' %}">{% icon "home" %}<span>Accueil</span></a>
     <a href="{% url 'feed:search' %}" class="{% active 'feed:search' 'feed:tag' %}">{% icon "search" %}<span>Recherche</span></a>
     <a href="{% url 'social:notifications' %}" class="{% active 'social:notifications' %}">
-      {% icon "bell" %}<span>Notifications</span>
+      {% icon "heart" %}<span>Notifications</span>
       <i class="nav-count" data-notif-count {% if not unread_notifications %}hidden{% endif %}>{{ unread_notifications }}</i>
     </a>
     <a href="{{ user.get_absolute_url }}" class="{% active 'accounts:profile' 'accounts:profile_edit' 'social:followers' 'social:following' %}">{% icon "user" %}<span>Profil</span></a>
