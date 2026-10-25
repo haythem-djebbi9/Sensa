@@ -13,11 +13,14 @@ from .models import Publication
 
 
 def phone_photo_upload():
-    """Photo prise en portrait par un téléphone : pixels couchés (400×300) et orientation EXIF 6."""
+    """Photo prise en portrait par un téléphone : pixels couchés (400×300), orientation EXIF 6,
+    marque de l'appareil et position GPS."""
     from PIL import Image
 
     exif = Image.Exif()
     exif[0x0112] = 6
+    exif[0x010F] = "SensaPhone"
+    exif[0x8825] = {1: "N", 2: (36.0, 52.0, 0.0)}
     buffer = io.BytesIO()
     Image.new("RGB", (400, 300), (200, 80, 40)).save(buffer, format="JPEG", exif=exif)
     return SimpleUploadedFile("portrait.jpg", buffer.getvalue(), content_type="image/jpeg")
@@ -80,6 +83,16 @@ class PublishTests(SensaTestCase):
         audio = Publication.objects.get().audio
         self.assertAlmostEqual(audio.duration, 2, delta=0.1)
         self.assertEqual(audio.transcription, "Bonjour")
+
+    def test_image_metadata_removed_on_upload(self):
+        from PIL import Image
+
+        self.publish(self.client, {"text": "Vue depuis le balcon"}, {"image": phone_photo_upload()})
+        stored = Publication.objects.get().images.get()
+        with stored.file.open("rb") as handle:
+            with Image.open(handle) as img:
+                self.assertEqual(dict(img.getexif()), {})
+                self.assertEqual(img.size, (300, 400))
 
     @override_settings(SENSA_POSTS_PER_HOUR=2)
     def test_rate_limit_returns_429(self):
