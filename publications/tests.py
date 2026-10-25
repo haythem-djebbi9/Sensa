@@ -10,7 +10,7 @@ from core.testing import SensaTestCase, image_upload, make_member, wav_upload
 from enrichment.models import AnalyseIA
 
 from . import ai
-from .models import Publication
+from .models import Publication, Republication
 
 
 def phone_photo_upload():
@@ -236,3 +236,31 @@ class MediaFileDeletionTests(SensaTestCase):
                 self.image.delete()
                 raise RuntimeError("annulation")
         self.assertTrue(self.storage.exists(self.name))
+
+
+class RepublicationRulesTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.noah = make_member("noah")
+        self.post = Publication.objects.create(author=self.lina, text="Bonjour", status=Publication.Status.READY)
+
+    def test_member_can_republish_public_ready_post(self):
+        self.assertTrue(self.post.can_republish(self.noah))
+
+    def test_author_cannot_republish_own_post(self):
+        self.assertFalse(self.post.can_republish(self.lina))
+
+    def test_only_public_ready_posts_are_republishable(self):
+        self.post.visibility = Publication.Visibility.FOLLOWERS
+        self.assertFalse(self.post.can_republish(self.noah))
+        self.post.visibility = Publication.Visibility.PUBLIC
+        for status in (Publication.Status.PENDING, Publication.Status.UNDER_REVIEW, Publication.Status.BLOCKED):
+            self.post.status = status
+            self.assertFalse(self.post.can_republish(self.noah))
+
+    def test_republication_is_unique_per_member(self):
+        from django.db import IntegrityError
+
+        Republication.objects.create(publication=self.post, member=self.noah)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Republication.objects.create(publication=self.post, member=self.noah)
