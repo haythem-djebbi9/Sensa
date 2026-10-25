@@ -353,3 +353,52 @@ class RepublicationProfileTests(SensaTestCase):
         response = self.client.get(reverse("accounts:profile", args=["lina"]))
         self.assertEqual(response.context["tab"], "publications")
         self.assertEqual(response.context["posts_count"], 2)
+
+
+class EditKeepsModerationTests(SensaTestCase):
+    def setUp(self):
+        from accounts.models import Membre
+
+        self.lina = make_member("lina")
+        self.camille = make_member("camille", role=Membre.Role.MODERATEUR)
+        self.client.force_login(self.lina)
+        self.publish(self.client, {"text": "Un post tout à fait normal"})
+        self.post = Publication.objects.get()
+        self.edit_url = reverse("publications:edit", args=[self.post.pk])
+
+    def decide(self, action):
+        self.client.force_login(self.camille)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("moderation:decide", args=[self.post.pk]), {"action": action})
+        self.client.force_login(self.lina)
+
+    def edit(self, execute=True):
+        with self.captureOnCommitCallbacks(execute=execute):
+            self.client.post(self.edit_url, {"text": "Un post modifié", "visibility": "PUBLIC"})
+        self.post.refresh_from_db()
+
+    def test_moderator_block_survives_edit(self):
+        self.decide("block")
+        self.edit()
+        self.assertEqual(self.post.status, Publication.Status.BLOCKED)
+
+    def test_blocked_post_stays_hidden_during_reanalysis(self):
+        self.decide("block")
+        self.edit(execute=False)
+        self.assertEqual(self.post.status, Publication.Status.BLOCKED)
+
+    def test_edit_after_approval_is_ready(self):
+        self.decide("block")
+        self.decide("approve")
+        self.edit()
+        self.assertEqual(self.post.status, Publication.Status.READY)
+
+    def test_reported_post_stays_under_review_after_edit(self):
+        for name in ("noah", "maya", "karim"):
+            self.client.force_login(make_member(name))
+            self.client.post(reverse("moderation:report", args=[self.post.pk]), {"reason": "SPAM", "details": ""})
+        self.post.refresh_from_db()
+        self.assertEqual(self.post.status, Publication.Status.UNDER_REVIEW)
+        self.client.force_login(self.lina)
+        self.edit()
+        self.assertEqual(self.post.status, Publication.Status.UNDER_REVIEW)

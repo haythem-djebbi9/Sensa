@@ -10,6 +10,7 @@ sont toujours exécutés : sécurité et fil).
 
 import logging
 
+from django.conf import settings
 from django.db import transaction
 from django.utils.module_loading import import_string
 
@@ -79,10 +80,29 @@ def launch(publication, types=None):
                     "duration_ms": None,
                 },
             )
-        Publication.objects.filter(pk=publication.pk).update(status=Publication.Status.PENDING)
-    publication.status = Publication.Status.PENDING
+        # Un post masqué (en revue ou bloqué) le reste pendant la nouvelle analyse :
+        # PENDING le rendrait visible de tous.
+        hidden = (Publication.Status.UNDER_REVIEW, Publication.Status.BLOCKED)
+        Publication.objects.filter(pk=publication.pk).exclude(status__in=hidden).update(status=Publication.Status.PENDING)
+    publication.refresh_from_db(fields=["status"])
     publication_id = publication.pk
     transaction.on_commit(lambda: advance(publication_id))
+
+
+def blocked_by_moderator(publication):
+    """La dernière décision humaine (approbation ou blocage) est un blocage."""
+    from moderation.models import DecisionModeration
+
+    latest = publication.decisions.exclude(action=DecisionModeration.Action.DISMISS).first()
+    return latest is not None and latest.action == DecisionModeration.Action.BLOCK
+
+
+def awaiting_review(publication):
+    """Assez de signalements ouverts pour attendre l'avis d'un modérateur."""
+    from moderation.models import Signalement
+
+    open_reports = publication.signalements.filter(status=Signalement.Status.OPEN).count()
+    return open_reports >= settings.SENSA_REPORTS_BEFORE_REVIEW
 
 
 def retry_failed(publication):
@@ -115,7 +135,7 @@ def advance(publication_id):
 
 
 def finalize(publication_id):
-    """Statut final : la modération prime, puis les échecs IA, sinon READY."""
+    """Statut final : la modération prime (décision humaine comprise), puis les échecs IA, sinon READY."""
     from publications.models import Publication
     from social.models import Notification
     from social.services import notify
@@ -133,9 +153,11 @@ def finalize(publication_id):
     decision = (moderation.result or {}).get("decision") if moderation else None
     failed = [row for row in rows if row.status == S.FAILED]
 
-    if decision == "BLOCK":
+    # L'IA ne peut pas annuler un blocage décidé par un modérateur, ni sortir de revue
+    # un post signalé : sinon il suffirait de modifier le texte pour le débloquer.
+    if decision == "BLOCK" or blocked_by_moderator(publication):
         status = Publication.Status.BLOCKED
-    elif decision == "REVIEW":
+    elif decision == "REVIEW" or awaiting_review(publication):
         status = Publication.Status.UNDER_REVIEW
     elif failed:
         status = Publication.Status.FAILED
