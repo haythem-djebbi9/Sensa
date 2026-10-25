@@ -336,6 +336,25 @@
     });
   }
 
+  function initRepostForm(form) {
+    if (form.dataset.ready) return;
+    form.dataset.ready = "1";
+    form.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = $("button", form);
+      try {
+        const data = await postForm(form);
+        button.classList.toggle("republished", data.republished);
+        button.setAttribute("aria-pressed", String(data.republished));
+        const count = $("[data-repost-count]", button);
+        if (count) count.textContent = data.count;
+        showToast(data.republished ? "Publication republiée sur votre profil." : "Republication annulée.", "info");
+      } catch (error) {
+        form.submit();
+      }
+    });
+  }
+
   function initFollowForm(form) {
     if (form.dataset.ready) return;
     form.dataset.ready = "1";
@@ -517,6 +536,7 @@
     $$("[data-audio-player]", root).forEach(initAudioPlayer);
     $$("[data-toggle-target]", root).forEach(initToggle);
     $$("form[data-like-form]", root).forEach(initLikeForm);
+    $$("form[data-repost-form]", root).forEach(initRepostForm);
     $$("form[data-follow-form]", root).forEach(initFollowForm);
     $$("[data-share-url]", root).forEach(initShare);
     $$("form[data-confirm]", root).forEach(initConfirm);

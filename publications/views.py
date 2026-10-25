@@ -4,18 +4,21 @@ from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.views.decorators.http import require_POST
 
 from accounts.views import safe_next
 from enrichment import pipeline
 from enrichment.models import AnalyseIA
-from social.services import annotate_social
+from social.models import Notification
+from social.services import annotate_social, notify
 from social.views import CommentForm
 
 from .forms import PublicationEditForm, PublicationForm
-from .models import Publication
+from .models import Publication, Republication
 
 
 def posts_last_hour(user):
@@ -117,3 +120,29 @@ def retry(request, pk):
     else:
         messages.info(request, "Aucune analyse en échec à relancer.")
     return redirect(safe_next(request, publication.get_absolute_url()))
+
+
+@login_required
+@require_POST
+def republish_toggle(request, pk):
+    """Republier un post (ou annuler la republication), comme sur Instagram."""
+    publication = get_object_or_404(Publication.objects.visible_to(request.user).select_related("author"), pk=pk)
+    existing = Republication.objects.filter(publication=publication, member=request.user)
+    if existing.exists():
+        existing.delete()
+        republished = False
+    elif publication.can_republish(request.user):
+        Republication.objects.get_or_create(publication=publication, member=request.user)
+        republished = True
+        already_notified = Notification.objects.filter(
+            recipient=publication.author, actor=request.user, type=Notification.Type.REPUBLISH, publication=publication
+        ).exists()
+        if not already_notified:
+            notify(publication.author, Notification.Type.REPUBLISH, actor=request.user, publication=publication,
+                   message=publication.excerpt)
+    else:
+        raise PermissionDenied("Seules les publications publiques des autres membres peuvent être republiées.")
+    count = publication.republications.count()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return JsonResponse({"republished": republished, "count": count})
+    return redirect(safe_next(request, publication.get_absolute_url()) + f"#post-{publication.pk}")

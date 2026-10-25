@@ -264,3 +264,53 @@ class RepublicationRulesTests(SensaTestCase):
         Republication.objects.create(publication=self.post, member=self.noah)
         with self.assertRaises(IntegrityError), transaction.atomic():
             Republication.objects.create(publication=self.post, member=self.noah)
+
+
+class RepublishToggleTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.noah = make_member("noah")
+        self.post = Publication.objects.create(author=self.lina, text="Bonjour", status=Publication.Status.READY)
+        self.url = reverse("publications:republish_toggle", args=[self.post.pk])
+        self.client.force_login(self.noah)
+
+    def test_republish_then_undo(self):
+        response = self.client.post(self.url, headers={"X-Requested-With": "fetch"})
+        self.assertEqual(response.json(), {"republished": True, "count": 1})
+        response = self.client.post(self.url, headers={"X-Requested-With": "fetch"})
+        self.assertEqual(response.json(), {"republished": False, "count": 0})
+        self.assertFalse(Republication.objects.exists())
+
+    def test_author_notified_once(self):
+        from social.models import Notification
+
+        for _ in range(3):
+            self.client.post(self.url)
+        notifications = Notification.objects.filter(recipient=self.lina, type=Notification.Type.REPUBLISH)
+        self.assertEqual(notifications.count(), 1)
+        self.assertEqual(notifications.get().title, "noah a republié votre publication")
+
+    def test_own_post_refused(self):
+        self.client.force_login(self.lina)
+        self.assertEqual(self.client.post(self.url).status_code, 403)
+        self.assertFalse(Republication.objects.exists())
+
+    def test_followers_only_post_refused(self):
+        from social.models import Abonnement
+
+        Abonnement.objects.create(follower=self.noah, followed=self.lina)
+        Publication.objects.filter(pk=self.post.pk).update(visibility=Publication.Visibility.FOLLOWERS)
+        self.assertEqual(self.client.post(self.url).status_code, 403)
+
+    def test_get_not_allowed(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+
+    def test_card_shows_button_and_count(self):
+        Republication.objects.create(publication=self.post, member=self.noah)
+        response = self.client.get(reverse("publications:card", args=[self.post.pk]))
+        self.assertContains(response, "data-repost-form")
+        self.assertContains(response, 'class="action-btn republished"')
+        self.client.force_login(self.lina)
+        response = self.client.get(reverse("publications:card", args=[self.post.pk]))
+        self.assertNotContains(response, "data-repost-form")
+        self.assertContains(response, 'title="Republications"')

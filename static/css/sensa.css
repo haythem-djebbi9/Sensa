@@ -209,6 +209,9 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .action-end { margin-left: auto; }
 .liked { color: #bd3142; }
 .liked .icon { fill: var(--color-corail); }
+.republished { color: var(--color-sensa); }
+.action-static { cursor: default; }
+.action-static:hover { background: transparent; color: var(--color-ardoise); }
 
 /* --- Menu contextuel --- */
 .menu { position: relative; }

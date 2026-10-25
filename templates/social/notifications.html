@@ -22,7 +22,7 @@
           <span class="notice-icon notice-{{ icon_info.1 }}">{% icon icon_info.0 %}</span>
           <span class="notice-copy">
             <strong>{{ notification.title }}</strong>
-            <span>{% if notification.type == "follow" %}{{ notification.actor.profile.bio|default:"Découvrez son profil" }}{% elif notification.message and notification.type == "comment" or notification.message and notification.type == "like" %}« {{ notification.message }} »{% elif notification.type == "like" %}Votre publication plaît{% else %}{{ notification.message }}{% endif %}</span>
+            <span>{% if notification.type == "follow" %}{{ notification.actor.profile.bio|default:"Découvrez son profil" }}{% elif notification.message and notification.type == "comment" or notification.message and notification.type == "like" or notification.message and notification.type == "republish" %}« {{ notification.message }} »{% elif notification.type == "like" %}Votre publication plaît{% else %}{{ notification.message }}{% endif %}</span>
           </span>
           <span class="notice-time">{{ notification.created_at|since }}</span>
           {% if not notification.is_read %}<span class="unread-dot" aria-label="Non lue"></span>{% endif %}

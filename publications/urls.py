@@ -11,4 +11,5 @@ urlpatterns = [
     path("<uuid:pk>/modifier/", views.edit, name="edit"),
     path("<uuid:pk>/supprimer/", views.delete, name="delete"),
     path("<uuid:pk>/relancer/", views.retry, name="retry"),
+    path("<uuid:pk>/republier/", views.republish_toggle, name="republish_toggle"),
 ]
