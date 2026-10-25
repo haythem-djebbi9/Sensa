@@ -1,3 +1,4 @@
+import io
 from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -7,7 +8,19 @@ from django.urls import reverse
 from core.testing import SensaTestCase, image_upload, make_member, wav_upload
 from enrichment.models import AnalyseIA
 
+from . import ai
 from .models import Publication
+
+
+def phone_photo_upload():
+    """Photo prise en portrait par un téléphone : pixels couchés (400×300) et orientation EXIF 6."""
+    from PIL import Image
+
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    buffer = io.BytesIO()
+    Image.new("RGB", (400, 300), (200, 80, 40)).save(buffer, format="JPEG", exif=exif)
+    return SimpleUploadedFile("portrait.jpg", buffer.getvalue(), content_type="image/jpeg")
 
 
 class PublishTests(SensaTestCase):
@@ -148,3 +161,10 @@ class ImageAltTests(SensaTestCase):
         self.image.description_ia = "Un coucher de soleil sur la mer."
         self.image.alt_text = "Ma plage préférée à Bizerte"
         self.assertEqual(self.image.alt, "Ma plage préférée à Bizerte")
+
+
+class DescribeBasicTests(SensaTestCase):
+    def test_respects_exif_orientation(self):
+        post = Publication.objects.create(author=make_member("lina"), text="Photo")
+        image = post.images.create(file=phone_photo_upload())
+        self.assertIn("au format portrait", ai.describe_basic(image))
