@@ -77,6 +77,7 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .sidebar nav a, .admin-nav a { position: relative; display: flex; align-items: center; gap: 0.85rem; width: 100%; min-height: 3rem; padding: 0 0.9rem; border-radius: var(--radius-control); background: transparent; color: var(--color-ardoise); font-weight: 600; }
 .sidebar nav a:hover, .admin-nav a:hover { background: var(--color-soft); color: var(--color-nuit); }
 .sidebar nav .nav-active, .admin-nav .nav-active { color: var(--color-sensa); background: var(--color-lavande); }
+.sidebar nav .nav-active .icon-heart, .mobile-nav .mobile-active .icon-heart { fill: currentColor; }
 .nav-count { margin-left: auto; display: grid; place-items: center; min-width: 1.25rem; height: 1.25rem; padding: 0 0.25rem; border-radius: 99rem; background: var(--color-corail); color: var(--color-nuit); font-size: 0.7rem; font-style: normal; font-weight: 700; }
 .nav-count[hidden] { display: none; }
 .create-button { width: 100%; margin-top: 1.25rem; }
