@@ -130,3 +130,12 @@ class VisibilityAndOwnershipTests(SensaTestCase):
         response = self.client.get(reverse("publications:card", args=[self.post.pk]))
         self.assertEqual(response["X-Post-Status"], "READY")
         self.assertContains(response, f'id="post-{self.post.pk}"')
+
+
+class ImageAltTests(SensaTestCase):
+    def setUp(self):
+        post = Publication.objects.create(author=make_member("lina"), text="Photo")
+        self.image = post.images.create(file=image_upload())
+
+    def test_alt_default_while_description_pending(self):
+        self.assertEqual(self.image.alt, "Image publiée sur Sensa (description en cours)")
