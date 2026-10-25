@@ -475,3 +475,84 @@ class SavedPostsTests(SensaTestCase):
         Enregistrement.objects.create(publication=self.post, member=self.noah)
         response = self.client.get(reverse("publications:card", args=[self.post.pk]))
         self.assertContains(response, 'class="action-btn action-end saved"')
+
+
+TRANSCRIPTION = {"text": "Bonjour", "language": "fr", "segments": [], "provider": "test"}
+
+
+class EditMediaTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+
+    def create(self, text="Ma publication", **files):
+        with mock.patch("enrichment.ai.transcribe", return_value=TRANSCRIPTION):
+            self.publish(self.client, {"text": text}, files)
+        return Publication.objects.get()
+
+    def edit(self, post, data, files=None):
+        payload = {"text": post.text, "visibility": "PUBLIC", **data, **(files or {})}
+        with mock.patch("enrichment.ai.transcribe", return_value=TRANSCRIPTION), \
+                self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("publications:edit", args=[post.pk]), payload)
+        post.refresh_from_db()
+        return response
+
+    def test_edit_page_lists_media(self):
+        post = self.create(image=[image_upload(), image_upload()], audio=wav_upload())
+        response = self.client.get(reverse("publications:edit", args=[post.pk]))
+        self.assertContains(response, 'name="remove_images"', count=2)
+        self.assertContains(response, 'name="remove_audio"')
+
+    def test_add_image_to_text_post(self):
+        post = self.create()
+        self.edit(post, {}, {"new_images": [image_upload()]})
+        image = post.images.get()
+        self.assertTrue(image.description_ia)
+        self.assertEqual(post.status, Publication.Status.READY)
+
+    def test_remove_one_image(self):
+        post = self.create(image=[image_upload("a.png"), image_upload("b.png")])
+        first, second = post.images.all()
+        storage, name = first.file.storage, first.file.name
+        self.edit(post, {"remove_images": [first.pk]})
+        self.assertEqual(list(post.images.all()), [second])
+        self.assertFalse(storage.exists(name))
+        targets = set(post.analyses.filter(type=AnalyseIA.Type.DESCRIPTION).values_list("target_id", flat=True))
+        self.assertEqual(targets, {str(second.pk)})
+
+    def test_replace_audio(self):
+        post = self.create(audio=wav_upload(seconds=1))
+        old = post.audio
+        self.edit(post, {}, {"audio": wav_upload(seconds=2)})
+        post = Publication.objects.get(pk=post.pk)
+        self.assertNotEqual(post.audio.pk, old.pk)
+        self.assertAlmostEqual(post.audio.duration, 2, delta=0.1)
+        targets = set(post.analyses.filter(type=AnalyseIA.Type.TRANSCRIPTION).values_list("target_id", flat=True))
+        self.assertEqual(targets, {str(post.audio.pk)})
+
+    def test_remove_audio_drops_its_summary(self):
+        post = self.create(audio=wav_upload())
+        self.assertTrue(post.analyses.filter(type=AnalyseIA.Type.SUMMARY).exists())
+        self.edit(post, {"remove_audio": "on"})
+        post = Publication.objects.get(pk=post.pk)
+        self.assertIsNone(post.audio_or_none)
+        self.assertFalse(post.analyses.filter(type__in=[AnalyseIA.Type.SUMMARY, AnalyseIA.Type.TRANSCRIPTION]).exists())
+
+    def test_cannot_remove_everything_without_text(self):
+        post = self.create(text="", image=[image_upload()])
+        response = self.edit(post, {"text": "", "remove_images": [post.images.get().pk]})
+        self.assertContains(response, "Une publication sans média doit contenir du texte.")
+        self.assertEqual(post.images.count(), 1)
+
+    @override_settings(SENSA_MAX_IMAGES=2)
+    def test_image_limit_counts_existing_images(self):
+        post = self.create(image=[image_upload(), image_upload()])
+        response = self.edit(post, {}, {"new_images": [image_upload()]})
+        self.assertContains(response, "2 images maximum par publication.")
+        self.assertEqual(post.images.count(), 2)
+
+    def test_alt_text_of_first_image_still_editable(self):
+        post = self.create(image=[image_upload()])
+        self.edit(post, {"alt_text": "Le port de Bizerte"})
+        self.assertEqual(post.images.get().alt_text, "Le port de Bizerte")

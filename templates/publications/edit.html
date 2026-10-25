@@ -10,7 +10,7 @@
       <h1>Modifier la publication</h1>
     </div>
   </header>
-  <form class="card composer" method="post" novalidate>
+  <form class="card composer" method="post" enctype="multipart/form-data" novalidate>
     {% csrf_token %}
     <div class="composer-person">
       {% avatar user %}
@@ -25,15 +25,38 @@
     {{ form.text }}
     <div class="character-count" data-char-count>0 / {{ SENSA_MAX_TEXT_LENGTH }}</div>
     {{ form.text.errors }}
-    {% if form.alt_text %}
-      <div class="composer-options">{% include "partials/field.html" with field=form.alt_text %}</div>
-    {% endif %}
+    <section class="composer-options edit-media" aria-labelledby="media-title">
+      <strong id="media-title">Médias</strong>
+      {% if form.remove_images %}
+        <fieldset class="edit-thumbs">
+          <legend class="sr-only">Images : cochez celles à retirer</legend>
+          {% for checkbox in form.remove_images %}
+            {% with image=checkbox.data.value.instance %}
+              <label class="edit-thumb">
+                <img src="{{ image.file.url }}" alt="{{ image.alt }}">
+                <span>{{ checkbox.tag }}Retirer</span>
+              </label>
+            {% endwith %}
+          {% endfor %}
+        </fieldset>
+        {{ form.remove_images.errors }}
+      {% endif %}
+      {% if form.alt_text %}{% include "partials/field.html" with field=form.alt_text %}{% endif %}
+      {% include "partials/field.html" with field=form.new_images %}
+      {% with audio=post.audio_or_none %}
+        {% if audio %}
+          {% include "partials/audio_player.html" with audio=audio compact=True %}
+          <label class="edit-check">{{ form.remove_audio }}Retirer l'audio</label>
+        {% endif %}
+      {% endwith %}
+      {% include "partials/field.html" with field=form.audio %}
+    </section>
     {% include "partials/form_errors.html" %}
     <div class="ai-note">
       <span class="ai-note-icon">{% icon "spark" %}</span>
       <div>
-        <strong>Le texte change, l'IA réanalyse</strong>
-        <p>Si vous modifiez le texte, les tags, la modération et les recommandations sont recalculés en arrière-plan. Les médias ne peuvent pas être remplacés : supprimez la publication pour en changer.</p>
+        <strong>Le contenu change, l'IA réanalyse</strong>
+        <p>Si vous modifiez le texte, les tags, la modération et les recommandations sont recalculés en arrière-plan. Si vous changez les images ou l'audio, toute l'analyse est refaite : descriptions, transcription et résumé compris.</p>
       </div>
     </div>
     <div class="composer-actions">

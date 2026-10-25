@@ -80,11 +80,15 @@ def edit(request, pk):
     publication = get_object_or_404(Publication.objects.for_cards(), pk=pk)
     if not publication.can_edit(request.user):
         raise PermissionDenied("Seul l'auteur peut modifier cette publication.")
-    form = PublicationEditForm(request.POST or None, instance=publication)
+    form = PublicationEditForm(request.POST or None, request.FILES or None, instance=publication)
     if request.method == "POST" and form.is_valid():
         text_changed = "text" in form.changed_data
         form.save()
-        if text_changed:
+        if form.media_changed:
+            # Nouveaux médias : toute l'analyse est refaite (descriptions, transcription, résumé, modération…).
+            pipeline.launch(Publication.objects.get(pk=publication.pk))
+            messages.success(request, "Publication modifiée. L'IA analyse les nouveaux médias.")
+        elif text_changed:
             # Le texte a changé : tags, modération et embedding sont recalculés.
             pipeline.launch(publication, types=[AnalyseIA.Type.TAGS, AnalyseIA.Type.MODERATION, AnalyseIA.Type.EMBEDDING])
             messages.success(request, "Publication modifiée. L'IA réanalyse le nouveau texte.")
