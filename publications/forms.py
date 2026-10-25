@@ -64,7 +64,7 @@ def measure_audio(audio):
 class PublicationForm(forms.ModelForm):
     image = MultipleImageField(label="Images", required=False)
     alt_text = forms.CharField(
-        label="Texte alternatif (facultatif)",
+        label="Texte alternatif",
         required=False,
         max_length=300,
         widget=forms.TextInput(attrs={"placeholder": "Décrivez l'image — sinon l'IA s'en charge"}),
