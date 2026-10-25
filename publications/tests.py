@@ -139,3 +139,7 @@ class ImageAltTests(SensaTestCase):
 
     def test_alt_default_while_description_pending(self):
         self.assertEqual(self.image.alt, "Image publiée sur Sensa (description en cours)")
+
+    def test_alt_uses_ai_description(self):
+        self.image.description_ia = "Un coucher de soleil sur la mer."
+        self.assertEqual(self.image.alt, "Un coucher de soleil sur la mer.")
