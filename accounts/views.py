@@ -79,18 +79,32 @@ def resend_confirmation(request):
 
 @login_required
 def profile(request, username):
-    from publications.models import Publication
+    from django.db.models import OuterRef, Subquery
+
+    from publications.models import Publication, Republication
     from social.models import Abonnement
     from social.services import annotate_social
 
     member = get_object_or_404(Membre.objects.select_related("profile"), username__iexact=username)
-    posts = annotate_social(Publication.objects.visible_to(request.user).filter(author=member).for_cards(), request.user)
+    visible = Publication.objects.visible_to(request.user)
+    own_posts = visible.filter(author=member)
+    member_reposts = Republication.objects.filter(member=member)
+    reposted = visible.filter(pk__in=member_reposts.values("publication_id"))
+    tab = "republications" if request.GET.get("onglet") == "republications" else "publications"
+    if tab == "republications":
+        reposted_at = member_reposts.filter(publication=OuterRef("pk")).values("created_at")[:1]
+        posts = annotate_social(reposted.for_cards(), request.user).annotate(reposted_at=Subquery(reposted_at))
+        posts = posts.order_by("-reposted_at")
+    else:
+        posts = annotate_social(own_posts.for_cards(), request.user)
     view = "liste" if request.GET.get("vue") == "liste" else "grille"
     context = {
         "member": member,
         "posts": posts[:60],
+        "tab": tab,
         "view": view,
-        "posts_count": posts.count(),
+        "posts_count": own_posts.count(),
+        "republications_count": reposted.count(),
         "followers_count": Abonnement.objects.filter(followed=member).count(),
         "following_count": Abonnement.objects.filter(follower=member).count(),
         "is_following": Abonnement.objects.filter(follower=request.user, followed=member).exists(),

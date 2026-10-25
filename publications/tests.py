@@ -314,3 +314,42 @@ class RepublishToggleTests(SensaTestCase):
         response = self.client.get(reverse("publications:card", args=[self.post.pk]))
         self.assertNotContains(response, "data-repost-form")
         self.assertContains(response, 'title="Republications"')
+
+
+class RepublicationProfileTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.noah = make_member("noah")
+        self.first = Publication.objects.create(author=self.lina, text="Premier", status=Publication.Status.READY)
+        self.second = Publication.objects.create(author=self.lina, text="Second", status=Publication.Status.READY)
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        Republication.objects.create(publication=self.second, member=self.noah)
+        newest = Republication.objects.create(publication=self.first, member=self.noah)
+        Republication.objects.filter(pk=newest.pk).update(created_at=timezone.now() + timedelta(minutes=1))
+        self.client.force_login(self.lina)
+        self.url = reverse("accounts:profile", args=["noah"])
+
+    def test_tab_lists_reposts_newest_first(self):
+        response = self.client.get(self.url, {"onglet": "republications", "vue": "liste"})
+        self.assertEqual(list(response.context["posts"]), [self.first, self.second])
+        self.assertEqual(response.context["republications_count"], 2)
+        self.assertEqual(response.context["posts_count"], 0)
+
+    def test_counts_are_not_limited_to_the_member(self):
+        Republication.objects.create(publication=self.first, member=make_member("maya"))
+        response = self.client.get(self.url, {"onglet": "republications"})
+        self.assertEqual({post.pk: post.republish_count for post in response.context["posts"]}[self.first.pk], 2)
+
+    def test_hidden_original_not_listed(self):
+        Publication.objects.filter(pk=self.first.pk).update(status=Publication.Status.BLOCKED)
+        self.client.force_login(make_member("maya"))
+        response = self.client.get(self.url, {"onglet": "republications"})
+        self.assertEqual(list(response.context["posts"]), [self.second])
+
+    def test_default_tab_shows_own_posts(self):
+        response = self.client.get(reverse("accounts:profile", args=["lina"]))
+        self.assertEqual(response.context["tab"], "publications")
+        self.assertEqual(response.context["posts_count"], 2)
