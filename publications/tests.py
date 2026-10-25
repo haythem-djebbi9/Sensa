@@ -2,6 +2,7 @@ import io
 from unittest import mock
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import transaction
 from django.test import override_settings
 from django.urls import reverse
 
@@ -181,3 +182,22 @@ class DescribeBasicTests(SensaTestCase):
         post = Publication.objects.create(author=make_member("lina"), text="Photo")
         image = post.images.create(file=phone_photo_upload())
         self.assertIn("au format portrait", ai.describe_basic(image))
+
+
+class MediaFileDeletionTests(SensaTestCase):
+    def setUp(self):
+        post = Publication.objects.create(author=make_member("lina"), text="Photo")
+        self.image = post.images.create(file=image_upload())
+        self.storage, self.name = self.image.file.storage, self.image.file.name
+
+    def test_file_deleted_after_commit(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            self.image.delete()
+        self.assertFalse(self.storage.exists(self.name))
+
+    def test_file_kept_when_deletion_rolled_back(self):
+        with self.captureOnCommitCallbacks(execute=True):
+            with self.assertRaises(RuntimeError), transaction.atomic():
+                self.image.delete()
+                raise RuntimeError("annulation")
+        self.assertTrue(self.storage.exists(self.name))
