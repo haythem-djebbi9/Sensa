@@ -27,6 +27,24 @@ def phone_photo_upload():
     return SimpleUploadedFile("portrait.jpg", buffer.getvalue(), content_type="image/jpeg")
 
 
+def webm_upload(seconds, name="enregistrement.webm"):
+    """WebM comme ceux de MediaRecorder : tailles « inconnues », pas de durée déclarée,
+    un bloc Opus toutes les 20 ms, un cluster toutes les 10 secondes."""
+    unknown = b"\x01\xff\xff\xff\xff\xff\xff\xff"
+
+    def element(element_id, payload):
+        return element_id + b"\x01" + len(payload).to_bytes(7, "big") + payload
+
+    data = element(b"\x1a\x45\xdf\xa3", element(b"\x42\x82", b"webm"))
+    data += b"\x18\x53\x80\x67" + unknown
+    data += element(b"\x15\x49\xa9\x66", element(b"\x2a\xd7\xb1", (1_000_000).to_bytes(3, "big")))
+    for cluster_ms in range(0, int(seconds * 1000), 10_000):
+        data += b"\x1f\x43\xb6\x75" + unknown + element(b"\xe7", cluster_ms.to_bytes(4, "big"))
+        for relative in range(0, min(10_000, int(seconds * 1000) - cluster_ms), 20):
+            data += element(b"\xa3", b"\x81" + relative.to_bytes(2, "big", signed=True) + b"\x80\xfc\x00")
+    return SimpleUploadedFile(name, data, content_type="audio/webm")
+
+
 class PublishTests(SensaTestCase):
     def setUp(self):
         self.lina = make_member("lina")
@@ -84,6 +102,23 @@ class PublishTests(SensaTestCase):
         audio = Publication.objects.get().audio
         self.assertAlmostEqual(audio.duration, 2, delta=0.1)
         self.assertEqual(audio.transcription, "Bonjour")
+
+    def test_browser_recording_duration_measured_on_server(self):
+        with mock.patch("enrichment.ai.transcribe", return_value={"text": "Salut", "language": "fr", "segments": [], "provider": "test"}):
+            self.publish(self.client, {"text": ""}, {"audio": webm_upload(seconds=5)})
+        self.assertAlmostEqual(Publication.objects.get().audio.duration, 5, delta=0.1)
+
+    def test_browser_reported_duration_not_trusted(self):
+        # Le champ caché « audio_duration » ne doit plus permettre de contourner la limite.
+        response = self.publish(self.client, {"text": "", "audio_duration": "10"}, {"audio": webm_upload(seconds=200)})
+        self.assertContains(response, "3 minutes")
+        self.assertFalse(Publication.objects.exists())
+
+    def test_unreadable_audio_rejected(self):
+        fake = SimpleUploadedFile("voix.webm", b"pas un audio", content_type="audio/webm")
+        response = self.publish(self.client, {"text": "", "audio_duration": "10"}, {"audio": fake})
+        self.assertContains(response, "Durée audio illisible")
+        self.assertFalse(Publication.objects.exists())
 
     def test_image_metadata_removed_on_upload(self):
         from PIL import Image

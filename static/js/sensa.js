@@ -196,7 +196,6 @@
   function initRecorder(tile) {
     const button = $("[data-record-toggle]", tile);
     const input = $("[data-audio-input]", tile.closest("form"));
-    const durationInput = $("[data-audio-duration]", tile.closest("form"));
     const title = $("[data-record-title]", tile);
     const hint = $("[data-record-hint]", tile);
     const icon = $(".record-icon", tile);
@@ -219,7 +218,6 @@
       const transfer = new DataTransfer();
       transfer.items.add(file);
       input.files = transfer.files;
-      if (durationInput) durationInput.value = seconds.toFixed(2);
       preview.src = URL.createObjectURL(file);
       preview.hidden = false;
       tile.classList.add("has-audio");
@@ -228,7 +226,6 @@
 
     function clearAudio() {
       input.value = "";
-      if (durationInput) durationInput.value = "";
       preview.hidden = true;
       preview.removeAttribute("src");
       tile.classList.remove("has-audio");
@@ -301,7 +298,6 @@
           clearAudio();
           return;
         }
-        if (durationInput) durationInput.value = seconds ? seconds.toFixed(2) : "";
         preview.src = probe.src;
         preview.hidden = false;
         tile.classList.add("has-audio");

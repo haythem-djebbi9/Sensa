@@ -45,7 +45,6 @@ class PublicationForm(forms.ModelForm):
         required=False,
         widget=forms.FileInput(attrs={"accept": "audio/*", "data-audio-input": ""}),
     )
-    audio_duration = forms.FloatField(required=False, min_value=0, widget=forms.HiddenInput(attrs={"data-audio-duration": ""}))
 
     class Meta:
         model = Publication
@@ -84,11 +83,10 @@ class PublicationForm(forms.ModelForm):
         if not (text or image or audio) and not self.errors:
             raise forms.ValidationError("Ajoutez un texte, une image ou un audio avant de publier.")
         if audio:
-            measured = read_audio_duration(audio)
-            reported = cleaned.get("audio_duration")
-            seconds = measured if measured is not None else reported
+            # La durée est mesurée sur le fichier : celle annoncée par le navigateur est modifiable.
+            seconds = read_audio_duration(audio)
             if seconds is None:
-                self.add_error("audio", "Durée audio illisible : utilisez un fichier MP3, M4A, OGG ou WAV.")
+                self.add_error("audio", "Durée audio illisible : utilisez un fichier WebM, MP3, M4A, OGG ou WAV.")
             elif seconds > settings.SENSA_MAX_AUDIO_SECONDS + 1:
                 self.add_error("audio", "L'audio ne doit pas dépasser 3 minutes.")
             else:
