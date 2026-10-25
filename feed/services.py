@@ -3,12 +3,13 @@
 from datetime import timedelta
 
 from django.db import connection
-from django.db.models import Count, Exists, OuterRef, Q
+from django.db.models import Count, Exists, OuterRef, Q, Subquery, UUIDField
+from django.db.models.functions import Coalesce, Greatest
 from django.utils import timezone
 
 from core.ai.text import STOPWORDS, normalize, slug_tag
 from enrichment.models import Tag
-from publications.models import Audio, Image, Publication
+from publications.models import Audio, Image, Publication, Republication
 from social.models import Abonnement, Reaction
 from social.services import annotate_social
 
@@ -39,8 +40,26 @@ def _ordered(user, ids, extra=None):
 # --- Fils -----------------------------------------------------------------------
 
 def following_feed(user):
+    """Posts des comptes suivis et les siens, plus ceux qu'ils ont republiés.
+
+    Un post republié remonte à la date de sa dernière republication, une seule fois.
+    """
     followed = Abonnement.objects.filter(follower=user).values("followed_id")
-    return cards(user).filter(Q(author_id__in=followed) | Q(author=user)).order_by("-created_at")
+    reposts = Republication.objects.filter(
+        Q(member_id__in=followed) | Q(member=user), publication=OuterRef("pk")
+    ).order_by("-created_at")
+    return (
+        cards(user)
+        .annotate(
+            reposted_at=Subquery(reposts.values("created_at")[:1]),
+            reposted_by_id=Subquery(reposts.values("member_id")[:1], output_field=UUIDField()),
+            reposted_by_name=Subquery(reposts.values("member__profile__display_name")[:1]),
+            reposted_by_username=Subquery(reposts.values("member__username")[:1]),
+        )
+        .filter(Q(author_id__in=followed) | Q(author=user) | Q(reposted_at__isnull=False))
+        .annotate(activity_at=Greatest("created_at", Coalesce("reposted_at", "created_at")))
+        .order_by("-activity_at")
+    )
 
 
 def latest_feed(user):

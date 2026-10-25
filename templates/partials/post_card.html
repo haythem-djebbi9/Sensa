@@ -3,6 +3,9 @@
   {% if post.reason %}
     <div class="post-reason">{% icon post.reason_icon|default:"spark" 15 %}{{ post.reason }}</div>
   {% endif %}
+  {% if post.reposted_by_id %}
+    <div class="post-reason">{% icon "repeat" 15 %}{% if post.reposted_by_id == user.pk %}Vous avez republié{% else %}<a href="{% url 'accounts:profile' post.reposted_by_username %}">{{ post.reposted_by_name|default:post.reposted_by_username }}</a> a republié{% endif %}</div>
+  {% endif %}
   <div class="post-head">
     <div class="person">
       <a href="{{ post.author.get_absolute_url }}">{% avatar post.author %}</a>
