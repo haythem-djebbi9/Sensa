@@ -4,14 +4,10 @@
 0 et 1 (fonction appelée par le pipeline du module 3). L'API d'abord (Groq gpt-oss,
 puis Claude), puis le modèle open source Detoxify s'il est installé, enfin un lexique FR/EN.
 """
-
 import logging
-
 from django.conf import settings
-
 from core.ai import AIError, AIUnavailable, llm
 from core.ai.text import lexicon_toxicity
-
 logger = logging.getLogger("sensa.ai")
 
 TOXICITY_PROMPT = """Tu es le système de modération d'un réseau social francophone.
@@ -25,7 +21,6 @@ Score de 0 à 1 :
 <texte>{text}</texte>
 <description_image>{description}</description_image>
 <transcription_audio>{transcription}</transcription_audio>"""
-
 TOXICITY_SCHEMA = {
     "type": "object",
     "properties": {
@@ -44,6 +39,7 @@ TOXICITY_SCHEMA = {
 }
 
 _detoxify_model = None
+
 
 
 def _detoxify(text):
@@ -103,7 +99,6 @@ def analyse_toxicity(text, image_description="", transcription="", *, last_attem
         logger.exception("Erreur du modèle Detoxify local")
     justification = f"Termes repérés : {', '.join(terms)}." if terms else "Aucun terme problématique repéré."
     return {"score": lexicon_score, "labels": ["insulte"] if terms else [], "justification": justification, "provider": "lexique-local"}
-
 
 def score_toxicity(text, image_description="", transcription=""):
     """Score de toxicité entre 0 et 1 (interface demandée par le module 3)."""
