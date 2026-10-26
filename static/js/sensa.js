@@ -386,6 +386,8 @@
     const prev = $("[data-carousel-prev]", carousel);
     const next = $("[data-carousel-next]", carousel);
     const slides = Array.from(track.children);
+    // Élément atteignable au clavier dans chaque image : la diapositive elle-même (fil) ou son lien (page de détail).
+    const targets = slides.map((slide) => (slide.matches("a") ? slide : $("a", slide) || slide));
     const total = slides.length;
     const current = () => Math.round(track.scrollLeft / track.clientWidth);
     let target = 0; // image demandée (le défilement doux met un moment à l'atteindre)
@@ -402,7 +404,7 @@
       if (focused === prev && prev.disabled) next.focus();
       if (focused === next && next.disabled) prev.focus();
       // Seule l'image visible est atteignable avec Tab ; les autres se parcourent avec les flèches.
-      slides.forEach((slide, position) => {
+      targets.forEach((slide, position) => {
         if (position === index) slide.removeAttribute("tabindex");
         else if (slide !== document.activeElement) slide.setAttribute("tabindex", "-1");
       });
@@ -417,8 +419,8 @@
       target = Math.min(Math.max(target + step, 0), total - 1);
       const slide = slides[target];
       if (moveFocus) {
-        slide.removeAttribute("tabindex");
-        slide.focus({ preventScroll: true });
+        targets[target].removeAttribute("tabindex");
+        targets[target].focus({ preventScroll: true });
       }
       track.scrollTo({ left: slide.offsetLeft - track.offsetLeft });
     };
@@ -485,6 +487,72 @@
   function initFeedMedia(media) {
     const card = media.closest(".post-card");
     initDoubleTap(media, card ? $("form[data-like-form]", card) : null, () => { window.location.href = media.href; });
+  }
+
+  /* ---------- Plein écran des images (page d'une publication) ---------- */
+  function initLightbox(card) {
+    const links = $$("[data-lightbox]", card);
+    if (!links.length || !window.HTMLDialogElement || card.dataset.lightboxReady) return;
+    card.dataset.lightboxReady = "1";
+    const total = links.length;
+    const dialog = document.createElement("dialog");
+    dialog.className = "lightbox";
+    dialog.setAttribute("aria-label", "Image en plein écran");
+    dialog.innerHTML = `
+      <button type="button" class="lightbox-close" aria-label="Fermer (Échap)">${iconHtml("x", "×")}</button>
+      <img class="lightbox-img" alt="">
+      <span class="lightbox-count" aria-hidden="true"></span>
+      <span class="sr-only" aria-live="polite"></span>
+      <button type="button" class="carousel-nav carousel-prev lightbox-nav" aria-label="Image précédente">${iconHtml("arrow", "‹")}</button>
+      <button type="button" class="carousel-nav carousel-next lightbox-nav" aria-label="Image suivante">${iconHtml("arrow", "›")}</button>`;
+    document.body.appendChild(dialog);
+    const image = $(".lightbox-img", dialog);
+    const counter = $(".lightbox-count", dialog);
+    const status = $("[aria-live]", dialog);
+    const [prev, next] = $$(".lightbox-nav", dialog);
+    let index = 0;
+
+    const show = (position, announce = false) => {
+      index = Math.min(Math.max(position, 0), total - 1);
+      image.src = links[index].href;
+      image.alt = $(".media-img", links[index]).alt;
+      counter.textContent = `${index + 1}/${total}`;
+      counter.hidden = prev.hidden = next.hidden = total < 2;
+      prev.disabled = index === 0;
+      next.disabled = index === total - 1;
+      if (announce) status.textContent = `Image ${index + 1} sur ${total}`;
+    };
+
+    links.forEach((link, position) => {
+      initDoubleTap(link, $("form[data-like-form]", card), () => {
+        show(position);
+        status.textContent = "";
+        dialog.showModal();
+        document.documentElement.classList.add("lightbox-open");
+      });
+    });
+    prev.addEventListener("click", () => show(index - 1, true));
+    next.addEventListener("click", () => show(index + 1, true));
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        show(index + (event.key === "ArrowRight" ? 1 : -1), true);
+      }
+    });
+    // Un clic à côté de l'image ferme ; un glissement au doigt change d'image.
+    dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+    $(".lightbox-close", dialog).addEventListener("click", () => dialog.close());
+    let touchStart = null;
+    dialog.addEventListener("touchstart", (event) => { touchStart = event.touches[0].clientX; }, { passive: true });
+    dialog.addEventListener("touchend", (event) => {
+      const distance = event.changedTouches[0].clientX - touchStart;
+      if (Math.abs(distance) > 50) show(index + (distance < 0 ? 1 : -1), true);
+    });
+    // En fermant, on revient sur l'image regardée en dernier (le carrousel suit).
+    dialog.addEventListener("close", () => {
+      document.documentElement.classList.remove("lightbox-open");
+      links[index].focus();
+    });
   }
 
   /* ---------- Composer : enregistrement audio dans le navigateur ---------- */
@@ -846,6 +914,7 @@
     $$("[data-carousel]", root).forEach(initCarousel);
     $$(".media-frame img", root).forEach(initFadeIn);
     $$(".post-card .media-wrap", root).forEach(initFeedMedia);
+    $$("[data-detail-post]", root).forEach(initLightbox);
     $$("[data-toggle-target]", root).forEach(initToggle);
     $$("form[data-like-form]", root).forEach(initLikeForm);
     $$("form[data-repost-form]", root).forEach(initRepostForm);
