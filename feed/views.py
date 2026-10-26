@@ -84,7 +84,7 @@ def search(request):
 
 
 from django.contrib import messages
-from django.shortcuts import redirect
+from django.shortcuts import get_object_or_404, redirect
 
 
 @login_required
@@ -92,6 +92,24 @@ def clear_searches(request):
     if request.method == "POST":
         Recherche.objects.filter(member=request.user).delete()
         messages.success(request, "Recherches récentes effacées.")
+    return redirect("feed:search")
+
+
+@login_required
+def delete_search(request, pk):
+    if request.method == "POST":
+        recherche = get_object_or_404(Recherche, pk=pk, member=request.user)
+        recherche.delete()
+        messages.success(request, "Recherche supprimée.")
+    return redirect("feed:search")
+
+
+@login_required
+def delete_search(request, pk):
+    if request.method == "POST":
+        recherche = get_object_or_404(Recherche, pk=pk, member=request.user)
+        recherche.delete()
+        messages.success(request, "Recherche supprimée.")
     return redirect("feed:search")
 
 

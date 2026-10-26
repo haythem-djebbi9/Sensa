@@ -81,7 +81,11 @@
               <button type="submit" class="btn btn-ghost btn-small">Effacer tout</button>
             </form>
           </div>
-          <div class="chip-cloud">{% for item in recent %}<a href="?q={{ item|urlencode }}">{% icon "clock" 14 %}{{ item }}</a>{% endfor %}</div>
+          <div class="chip-cloud">
+            {% for item in recent %}
+              <a href="?q={{ item|urlencode }}">{% icon "clock" 14 %}{{ item }}</a>
+            {% endfor %}
+          </div>
         </section>
       {% endif %}
       <section>

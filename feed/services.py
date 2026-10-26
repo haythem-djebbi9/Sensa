@@ -255,7 +255,7 @@ def search(user, query, kind="tout", mode="mots"):
     if not cleaned:
         return [], mode, ""
     # Si la requête est majoritairement des hashtags, normaliser
-    if query.startswith("#") and len(query) > 1:
+    if query.lstrip().startswith("#") and len(query.lstrip()) > 1:
         slug = slug_tag(query)
         if not slug:
             return [], mode, ""
