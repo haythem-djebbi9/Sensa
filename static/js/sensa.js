@@ -14,6 +14,13 @@
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
   }
 
+  /* Icône SVG du gabarit #icon-templates (base.html). */
+  function iconHtml(name, fallback = "") {
+    const template = $("#icon-templates");
+    const icon = template ? template.content.querySelector(`[data-icon="${name}"]`) : null;
+    return icon ? icon.innerHTML : fallback;
+  }
+
   function escapeHtml(value) {
     const div = document.createElement("div");
     div.textContent = value == null ? "" : String(value);
@@ -359,6 +366,54 @@
     update();
   }
 
+  /* ---------- Images : apparition en fondu une fois chargées ---------- */
+  function initFadeIn(img) {
+    if (img.complete) return; // déjà affichée : pas de clignotement
+    img.classList.add("fade-pending");
+    const show = () => img.classList.remove("fade-pending");
+    img.addEventListener("load", show, { once: true });
+    img.addEventListener("error", show, { once: true });
+  }
+
+  /* ---------- Double-tap sur une photo : j'aime ---------- */
+  /* Un toucher garde son action (ouvrir la publication, agrandir l'image) ;
+     deux touchers rapprochés aiment la publication, avec un cœur sur la photo. */
+  function initDoubleTap(media, likeForm, onSingle) {
+    if (media.dataset.tapReady) return;
+    media.dataset.tapReady = "1";
+    let timer = null;
+    media.addEventListener("click", (event) => {
+      // Ctrl/⌘-clic, clic milieu : comportement normal du lien (nouvel onglet…).
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      // Clavier (Entrée) ou pas de bouton J'aime : action immédiate.
+      if (event.detail === 0 || !likeForm) { onSingle(); return; }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+        likeFromPhoto(media, likeForm);
+        return;
+      }
+      timer = setTimeout(() => { timer = null; onSingle(); }, 260);
+    });
+  }
+
+  function likeFromPhoto(media, likeForm) {
+    const frame = $(".media-frame", media) || media;
+    const burst = document.createElement("span");
+    burst.className = "like-burst";
+    burst.setAttribute("aria-hidden", "true");
+    burst.innerHTML = iconHtml("heart", "♥");
+    frame.appendChild(burst);
+    setTimeout(() => burst.remove(), 900);
+    // Comme sur les réseaux sociaux, le double-tap aime mais n'annule jamais un j'aime.
+    if ($("button", likeForm).getAttribute("aria-pressed") !== "true") likeForm.requestSubmit();
+  }
+
+  function initFeedMedia(media) {
+    const card = media.closest(".post-card");
+    initDoubleTap(media, card ? $("form[data-like-form]", card) : null, () => { window.location.href = media.href; });
+  }
 
   /* ---------- Composer : enregistrement audio dans le navigateur ---------- */
   function initRecorder(tile) {
@@ -496,6 +551,11 @@
         const data = await postForm(form);
         button.classList.toggle("liked", data.liked);
         button.setAttribute("aria-pressed", String(data.liked));
+        if (data.liked) {
+          button.classList.remove("like-pop");
+          void button.offsetWidth; // relance l'animation du cœur
+          button.classList.add("like-pop");
+        }
         const count = $("[data-like-count]", button);
         if (count) count.textContent = data.count;
       } catch (error) {
@@ -712,6 +772,8 @@
   function enhance(root) {
     $$("[data-audio-player]", root).forEach(initAudioPlayer);
     $$("[data-carousel]", root).forEach(initCarousel);
+    $$(".media-frame img", root).forEach(initFadeIn);
+    $$(".post-card .media-wrap", root).forEach(initFeedMedia);
     $$("[data-toggle-target]", root).forEach(initToggle);
     $$("form[data-like-form]", root).forEach(initLikeForm);
     $$("form[data-repost-form]", root).forEach(initRepostForm);

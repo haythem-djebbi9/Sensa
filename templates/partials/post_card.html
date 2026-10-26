@@ -47,7 +47,11 @@
       {% for image in images %}
         <a class="media-wrap" style="--ratio: {{ ratio }}" href="{{ post.get_absolute_url }}"{% if images|length > 1 and not forloop.first %} tabindex="-1"{% endif %}>
           {% if images|length > 1 %}<span class="sr-only">Image {{ forloop.counter }} sur {{ images|length }} : </span>{% endif %}
-          <img src="{{ image.display_url }}" alt="{{ image.alt }}" loading="lazy">
+          {# Copie floutée de la photo en fond, à la place des bandes unies autour des photos en portrait. #}
+          <span class="media-frame">
+            <img class="media-backdrop" src="{{ image.display_url }}" alt="" aria-hidden="true" loading="lazy">
+            <img class="media-img" src="{{ image.display_url }}" alt="{{ image.alt }}" loading="lazy">
+          </span>
           {% if image.description_ia %}
             {# Sans texte de l'auteur, l'alt de l'image est déjà cette description : on évite de la faire lire deux fois. #}
             <div class="ai-caption"{% if not image.alt_text %} aria-hidden="true"{% endif %}>{% icon "spark" 15 %}<span><strong>Description IA</strong> · {{ image.description_ia }}</span></div>

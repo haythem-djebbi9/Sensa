@@ -85,6 +85,13 @@ class PublishTests(SensaTestCase):
         self.assertContains(response, "data-carousel")
         self.assertContains(response, "1/3")
 
+    def test_feed_photo_has_blurred_backdrop(self):
+        self.publish(self.client, {"text": ""}, {"image": image_upload()})
+        post = Publication.objects.get()
+        response = self.client.get(reverse("publications:card", args=[post.pk]))
+        self.assertContains(response, 'class="media-backdrop"')
+        self.assertContains(response, 'alt="" aria-hidden="true"')
+
     def test_too_long_alt_text_rejected(self):
         response = self.publish(self.client, {"text": "test", "alt_text": ["Court", "x" * 301]},
                                 {"image": [image_upload(), image_upload()]})

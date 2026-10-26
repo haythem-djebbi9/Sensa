@@ -181,8 +181,16 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .post-notice-blocked, .post-notice-failed { background: #fff0f1; color: #8e2433; }
 .post-notice form { margin-left: auto; }
 .media-wrap { display: block; margin-top: 1rem; overflow: hidden; border-radius: 1rem; border: 0.0625rem solid var(--color-line); }
-/* Proportions de la photo (4:5 à 1,91:1) ; sur grand écran, hauteur limitée et image entière, centrée. */
-.media-wrap img { display: block; width: 100%; height: auto; aspect-ratio: var(--ratio, 4 / 3); max-height: var(--media-max-height); object-fit: contain; background: var(--color-lavande); }
+/* Proportions de la photo (4:5 à 1,91:1) ; sur grand écran, hauteur limitée et image entière, centrée.
+   Autour d'une photo plus étroite que le cadre, une copie floutée remplace les bandes unies. */
+.media-frame { position: relative; display: block; overflow: hidden; background: var(--color-lavande); touch-action: manipulation; -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent; }
+.media-backdrop { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.2); filter: blur(1.75rem) saturate(1.15); opacity: 0.55; pointer-events: none; transition: opacity 400ms ease; }
+.media-img { position: relative; display: block; width: 100%; height: auto; aspect-ratio: var(--ratio, 4 / 3); max-height: var(--media-max-height); object-fit: contain; transition: opacity 400ms ease; }
+.media-frame img.fade-pending { opacity: 0; }
+/* Double-tap : cœur qui apparaît sur la photo. */
+.like-burst { position: absolute; z-index: 3; top: 50%; left: 50%; color: white; pointer-events: none; transform: translate(-50%, -50%) scale(0); opacity: 0; filter: drop-shadow(0 0.3rem 1rem rgba(30,27,58,.35)); animation: like-burst 850ms cubic-bezier(.2,.8,.3,1.2) forwards; }
+.like-burst .icon { width: 5.5rem; height: 5.5rem; fill: currentColor; stroke: currentColor; }
+@keyframes like-burst { 15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); } 30% { transform: translate(-50%, -50%) scale(0.95); } 45%, 75% { opacity: 1; transform: translate(-50%, -50%) scale(1); } 100% { opacity: 0; transform: translate(-50%, -60%) scale(0.9); } }
 .ai-caption { display: flex; align-items: start; gap: 0.5rem; padding: 0.75rem 0.85rem; background: #fffaf0; color: var(--color-ardoise); font-size: 0.76rem; line-height: 1.45; }
 .ai-caption .icon { color: #8a6500; flex: none; margin-top: 0.1rem; }
 .ai-caption strong { color: #765500; }
@@ -223,6 +231,8 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .action-end { margin-left: auto; }
 .liked { color: #bd3142; }
 .liked .icon { fill: var(--color-corail); }
+.like-pop .icon { animation: like-pop 420ms cubic-bezier(.2,.8,.3,1.4); }
+@keyframes like-pop { 40% { transform: scale(1.35); } 70% { transform: scale(0.92); } }
 .republished { color: var(--color-sensa); }
 .saved { color: var(--color-nuit); }
 .saved .icon { fill: currentColor; }
