@@ -137,7 +137,7 @@ class Publication(models.Model):
         return self.status == self.Status.READY and self.visibility == self.Visibility.PUBLIC
 
     def can_republish(self, user):
-        return user.is_authenticated and user.pk != self.author_id and self.is_republishable
+        return user.is_authenticated and self.is_republishable
 
     @property
     def excerpt(self):
@@ -244,13 +244,16 @@ class Audio(models.Model):
 
 
 class Republication(models.Model):
-    """Republication d'un post par un membre, comme sur Instagram : le post original est
-    repartagé tel quel, sans copie. Il disparaît des republications si l'original n'est plus visible."""
+    """Republication d'un post par un membre (l'auteur compris), avec un court message facultatif.
+    Le post original est repartagé tel quel, sans copie : il disparaît des republications s'il n'est plus visible."""
+
+    MESSAGE_MAX_LENGTH = 200
 
     publication = models.ForeignKey(Publication, on_delete=models.CASCADE, related_name="republications")
     member = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="republications", verbose_name="membre"
     )
+    message = models.CharField("message", max_length=MESSAGE_MAX_LENGTH, blank=True)
     created_at = models.DateTimeField("republiée le", auto_now_add=True, db_index=True)
 
     class Meta:

@@ -61,21 +61,24 @@
       {% for post in posts %}
         {% with image=post.main_image audio=post.audio_or_none %}
           {% if image %}
-            <a class="profile-tile image-tile" href="{{ post.get_absolute_url }}">
+            <a class="profile-tile image-tile{% if tab == 'republications' %} is-repost{% if post.reposted_message %} has-repost-message{% endif %}{% endif %}" href="{{ post.get_absolute_url }}">
+              {% if tab == "republications" %}{% include "accounts/_repost_tile.html" %}{% endif %}
               {% if post.status != "READY" %}<span class="tile-status">{% status_badge post %}</span>{% endif %}
               <img src="{{ image.display_url }}" alt="{{ image.alt }}" loading="lazy">
               {% with count=post.images.all|length %}{% if count > 1 %}<span class="tile-chip tile-chip-top" aria-label="{{ count }} images">{% icon "image" 14 %}{{ count }}</span>{% endif %}{% endwith %}
               {% if audio %}<span class="tile-chip">{% icon "headphones" 14 %}{{ audio.duration|duration }}</span>{% endif %}
             </a>
           {% elif audio %}
-            <a class="profile-tile sound-tile" href="{{ post.get_absolute_url }}">
+            <a class="profile-tile sound-tile{% if tab == 'republications' %} is-repost{% if post.reposted_message %} has-repost-message{% endif %}{% endif %}" href="{{ post.get_absolute_url }}">
+              {% if tab == "republications" %}{% include "accounts/_repost_tile.html" %}{% endif %}
               {% if post.status != "READY" %}<span class="tile-status">{% status_badge post %}</span>{% endif %}
               <span class="sound-circle">{% icon "mic" %}</span>
               <strong>{{ post.excerpt|default:"Note vocale" }}</strong>
               <span>{{ audio.duration|duration }} · {{ post.created_at|since }}</span>
             </a>
           {% else %}
-            <a class="profile-tile quote-tile" href="{{ post.get_absolute_url }}">
+            <a class="profile-tile quote-tile{% if tab == 'republications' %} is-repost{% if post.reposted_message %} has-repost-message{% endif %}{% endif %}" href="{{ post.get_absolute_url }}">
+              {% if tab == "republications" %}{% include "accounts/_repost_tile.html" %}{% endif %}
               {% if post.status != "READY" %}<span class="tile-status">{% status_badge post %}</span>{% endif %}
               <span class="quote-mark">“</span>
               <strong>{{ post.text|truncatechars:160 }}</strong>

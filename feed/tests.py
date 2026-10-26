@@ -89,6 +89,10 @@ class RepublicationFeedTests(FeedTestCase):
         Republication.objects.create(publication=self.noah_post, member=self.lina)
         self.assertContains(self.client.get(reverse("feed:home")), "Vous avez republié")
 
+    def test_repost_message_shown_in_feed(self):
+        Republication.objects.create(publication=self.noah_post, member=self.maya, message="Magnifique 👏")
+        self.assertContains(self.client.get(reverse("feed:home")), '<p class="repost-message">Magnifique 👏</p>', html=True)
+
     def test_repost_by_stranger_not_shown(self):
         Republication.objects.create(publication=self.maya_post, member=make_member("karim"))
         self.assertNotIn(self.noah_post, self.feed())

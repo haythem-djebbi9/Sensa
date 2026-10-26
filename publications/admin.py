@@ -26,8 +26,8 @@ class PublicationAdmin(admin.ModelAdmin):
 
 @admin.register(Republication)
 class RepublicationAdmin(admin.ModelAdmin):
-    list_display = ("member", "publication", "created_at")
-    search_fields = ("member__username", "publication__text")
+    list_display = ("member", "publication", "message", "created_at")
+    search_fields = ("member__username", "publication__text", "message")
     raw_id_fields = ("member", "publication")
 
 
