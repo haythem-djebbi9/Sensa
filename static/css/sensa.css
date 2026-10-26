@@ -256,7 +256,7 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .composer-person strong { font-size: 0.9rem; }
 .composer-person div > span { color: var(--color-ardoise); font-size: 0.75rem; margin-top: 0.15rem; }
 .composer-person select { height: 2.3rem; padding: 0 0.7rem; border: 0.0625rem solid var(--color-line); border-radius: 0.6rem; background: white; font-size: 0.78rem; }
-.composer textarea { width: 100%; min-height: 10rem; margin-top: 1.5rem; padding: 0; resize: vertical; border: 0; color: var(--color-nuit); font-size: 1.2rem; line-height: 1.55; background: transparent; }
+.composer textarea { width: 100%; min-height: 4.75rem; max-height: 60vh; margin-top: 1.25rem; padding: 0; resize: vertical; border: 0; color: var(--color-nuit); font-size: 1.2rem; line-height: 1.55; background: transparent; }
 .composer textarea::placeholder { color: #9c98ad; }
 .composer textarea:focus { outline: none; }
 .character-count { color: var(--color-ardoise); font-size: 0.72rem; text-align: right; }
@@ -299,6 +299,23 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .record-tile.has-audio .record-import, .record-tile.is-recording .record-import { display: none; }
 .upload-tile input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .upload-tile:focus-within { outline: 0.1875rem solid color-mix(in srgb, var(--color-sensa) 35%, transparent); outline-offset: 0.125rem; }
+/* Glisser-déposer */
+.upload-label .drop-hint { color: var(--color-sensa); font-size: 0.72rem; font-weight: 600; }
+@media (hover: none) { .upload-label .drop-hint { display: none; } }
+.drop-overlay { position: absolute; inset: 0; z-index: 3; display: none; flex-direction: column; align-items: center; justify-content: center; gap: 0.4rem; background: color-mix(in srgb, var(--color-lavande) 92%, transparent); color: var(--color-sensa); font-size: 0.85rem; font-weight: 700; pointer-events: none; }
+.upload-tile.is-dragover { border: 0.125rem solid var(--color-sensa); background: var(--color-lavande); box-shadow: 0 0 0 0.3rem color-mix(in srgb, var(--color-sensa) 15%, transparent); }
+.upload-tile.is-dragover .drop-overlay { display: flex; }
+/* Vignettes des images choisies */
+.upload-thumbs { display: flex; gap: 0.5rem; margin: 0.7rem 0 0; padding: 0.1rem 0.1rem 0.3rem; list-style: none; overflow-x: auto; }
+.upload-thumbs[hidden] { display: none; }
+.upload-thumb { position: relative; flex: none; }
+.thumb-show { display: block; width: 4.25rem; height: 4.25rem; padding: 0; overflow: hidden; border: 0.125rem solid transparent; border-radius: 0.7rem; background: var(--color-lavande); cursor: pointer; transition: border-color 150ms, opacity 150ms; opacity: 0.75; }
+.thumb-show img { width: 100%; height: 100%; object-fit: cover; }
+.thumb-show:hover { opacity: 1; }
+.thumb-show[aria-pressed="true"] { border-color: var(--color-sensa); opacity: 1; }
+.thumb-number { position: absolute; left: 0.3rem; bottom: 0.3rem; min-width: 1.1rem; padding: 0 0.25rem; border-radius: 999px; background: rgba(30,27,58,.75); color: white; font-size: 0.62rem; font-weight: 700; text-align: center; pointer-events: none; }
+.thumb-remove { position: absolute; top: -0.35rem; right: -0.35rem; width: 1.4rem; height: 1.4rem; display: grid; place-items: center; padding: 0; border-radius: 50%; background: var(--color-nuit); color: white; cursor: pointer; box-shadow: 0 0 0 0.125rem white; }
+.thumb-remove .icon { width: 0.8rem; height: 0.8rem; }
 fieldset { margin: 0; padding: 0; min-width: 0; }
 .composer-options { display: grid; gap: 0.8rem; margin-top: 1rem; }
 .edit-thumbs { display: grid; gap: 0.7rem; }
@@ -312,8 +329,9 @@ fieldset { margin: 0; padding: 0; min-width: 0; }
 .ai-note-icon { width: 2.2rem; height: 2.2rem; display: grid; place-items: center; flex: none; border-radius: 50%; background: var(--color-jaune); color: var(--color-nuit); }
 .ai-note strong { font-size: 0.85rem; }
 .ai-note p { margin-top: 0.2rem; color: var(--color-ardoise); font-size: 0.76rem; line-height: 1.5; }
-.composer-actions { display: flex; justify-content: flex-end; align-items: center; gap: 0.7rem; margin-top: 1.5rem; }
-.composer-actions .muted { margin-right: auto; font-size: 0.75rem; }
+/* Barre d'actions toujours visible en bas de l'écran pendant la rédaction. */
+.composer-actions { position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 0.7rem; margin: 1.5rem -1.5rem -1.5rem; padding: 0.9rem 1.5rem; border-top: 0.0625rem solid var(--color-line); border-radius: 0 0 var(--radius-card) var(--radius-card); background: rgba(255,255,255,.96); backdrop-filter: blur(0.5rem); }
+.composer-actions .muted { flex: 1 1 10rem; margin-right: auto; font-size: 0.75rem; }
 .form-errors { margin-top: 1rem; }
 
 /* --- Détail d'un post --- */
@@ -759,9 +777,14 @@ td .preview a:hover { color: var(--color-sensa); }
   .action-end { margin-left: 0; }
   .upload-grid { grid-template-columns: 1fr; }
   .composer { padding: 1rem; }
-  .composer textarea { min-height: 8rem; font-size: 1.05rem; }
+  .composer textarea { min-height: 4.5rem; font-size: 1.05rem; }
+  .composer-actions { bottom: 4.8rem; margin: 1.2rem -1rem -1rem; padding: 0.75rem 1rem; gap: 0.5rem; }
+  .composer-actions .muted { flex-basis: 100%; }
+  .composer-actions .btn { flex: 1 1 auto; }
+  .composer-actions .action-cancel { display: none; } /* la barre de navigation permet déjà de quitter */
   .composer-person { flex-wrap: wrap; }
   .upload-tile, .record-tile, .upload-label, .record-button { min-height: 7.5rem; }
+  .record-button { padding-bottom: 2rem; }
   .detail-card { padding: 1rem; }
   .description-box { flex-direction: column; }
   .comment-box .avatar { display: none; }

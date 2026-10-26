@@ -97,6 +97,7 @@ class PublicationForm(forms.ModelForm):
         widgets = {
             "text": forms.Textarea(
                 attrs={
+                    "rows": 3,
                     "placeholder": "Que se passe-t-il autour de vous ? #hashtags bienvenus",
                     "maxlength": settings.SENSA_MAX_TEXT_LENGTH,
                     "data-char-source": "",
@@ -158,7 +159,7 @@ class PublicationEditForm(forms.ModelForm):
     class Meta:
         model = Publication
         fields = ("text", "visibility")
-        widgets = {"text": forms.Textarea(attrs={"maxlength": settings.SENSA_MAX_TEXT_LENGTH, "data-char-source": ""})}
+        widgets = {"text": forms.Textarea(attrs={"rows": 3, "maxlength": settings.SENSA_MAX_TEXT_LENGTH, "data-char-source": ""})}
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)

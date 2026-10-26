@@ -164,6 +164,16 @@
     update();
   }
 
+  /* ---------- Composer : zone de texte qui grandit au fil de l'écriture ---------- */
+  function initAutoGrow(textarea) {
+    const grow = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    };
+    textarea.addEventListener("input", grow);
+    grow();
+  }
+
   /* ---------- Composer : images (carrousel) et textes alternatifs ---------- */
   function initImageInput(input) {
     const tile = input.closest(".upload-tile");
@@ -172,11 +182,13 @@
     const count = $("[data-upload-count]", tile);
     const removeButton = $(".preview-remove", tile);
     const addButton = $("[data-image-add]", tile);
+    const thumbs = $("[data-upload-thumbs]", input.form);
     const altField = document.getElementById("alt-field");
     const rows = altField ? $("[data-alt-rows]", altField) : null;
     const rowTemplate = rows ? $("[data-alt-row]", rows).cloneNode(true) : null;
     const maxFiles = Number(input.dataset.maxFiles) || 10;
     let selected = []; // images choisies, dans l'ordre du carrousel : { file, url, row }
+    let shown = null; // image affichée en grand dans l'aperçu
 
     function showHint(row, text) {
       const hint = $("[data-alt-hint]", row);
@@ -221,20 +233,24 @@
       input.files = transfer.files;
       const total = selected.length;
       tile.classList.toggle("has-file", total > 0);
-      if (count) {
-        count.hidden = total < 2;
-        count.textContent = `${total} images`;
-      }
+      if (count) count.hidden = total < 2;
       if (addButton) addButton.hidden = total >= maxFiles;
+      if (thumbs) thumbs.hidden = total < 2;
       if (!total) {
+        shown = null;
+        if (thumbs) thumbs.replaceChildren();
         if (altField) {
           altField.hidden = true;
           rows.replaceChildren(rowTemplate.cloneNode(true));
         }
         return;
       }
-      preview.src = selected[0].url;
-      preview.alt = total > 1 ? `Aperçu de la première des ${total} images` : `Aperçu de ${selected[0].file.name}`;
+      if (!selected.includes(shown)) shown = selected[0];
+      const shownPosition = selected.indexOf(shown) + 1;
+      preview.src = shown.url;
+      preview.alt = total > 1 ? `Aperçu de l'image ${shownPosition} sur ${total}` : `Aperçu de ${shown.file.name}`;
+      if (count) count.textContent = `${shownPosition}/${total}`;
+      if (thumbs) thumbs.replaceChildren(...selected.map(thumbItem));
       if (!altField) return;
       altField.hidden = false;
       rows.replaceChildren(...selected.map(({ row }) => row));
@@ -250,6 +266,38 @@
         down.setAttribute("aria-label", `Reculer l'image ${position}`);
         remove.setAttribute("aria-label", `Retirer l'image ${position}`);
       });
+    }
+
+    function removeEntry(entry) {
+      selected = selected.filter((item) => item !== entry);
+      URL.revokeObjectURL(entry.url);
+      sync();
+    }
+
+    /* Vignette de la rangée sous l'aperçu : la toucher l'affiche en grand, × la retire. */
+    function thumbItem(entry, index) {
+      const position = index + 1;
+      const item = document.createElement("li");
+      item.className = "upload-thumb";
+      item.innerHTML = '<button type="button" class="thumb-show"><img alt=""></button><span class="thumb-number" aria-hidden="true"></span><button type="button" class="thumb-remove"></button>';
+      const [show, remove] = $$("button", item);
+      $("img", show).src = entry.url;
+      $(".thumb-number", item).textContent = position;
+      show.setAttribute("aria-label", `Afficher l'image ${position}`);
+      show.setAttribute("aria-pressed", String(entry === shown));
+      remove.setAttribute("aria-label", `Retirer l'image ${position}`);
+      remove.innerHTML = iconHtml("x", "×");
+      show.addEventListener("click", () => {
+        shown = entry;
+        sync();
+        $$(".thumb-show", thumbs)[index].focus();
+      });
+      remove.addEventListener("click", () => {
+        removeEntry(entry);
+        const next = $$(".thumb-remove", thumbs)[Math.min(index, selected.length - 1)];
+        (thumbs.hidden || !next ? addButton || input : next).focus();
+      });
+      return item;
     }
 
     function addFile(file) {
@@ -268,18 +316,13 @@
         sync();
         button.focus();
       }));
-      $("[data-remove-image]", entry.row).addEventListener("click", () => {
-        selected = selected.filter((item) => item !== entry);
-        URL.revokeObjectURL(entry.url);
-        sync();
-      });
+      $("[data-remove-image]", entry.row).addEventListener("click", () => removeEntry(entry));
       selected.push(entry);
       if (altField && altField.dataset.suggestUrl) suggestAltText(entry);
     }
 
-    input.addEventListener("change", () => {
-      // Le navigateur ne garde que le dernier choix : on l'ajoute aux images déjà sélectionnées.
-      const files = Array.from(input.files || []);
+    /* Ajoute des images choisies avec le bouton ou déposées sur le formulaire. */
+    function addFiles(files) {
       if (!files.length) return;
       let problem = "";
       if (selected.length + files.length > maxFiles) problem = `${maxFiles} images maximum par publication.`;
@@ -292,7 +335,36 @@
       }
       files.forEach(addFile);
       sync();
+    }
+
+    // Le navigateur ne garde que le dernier choix : on l'ajoute aux images déjà sélectionnées.
+    input.addEventListener("change", () => addFiles(Array.from(input.files || [])));
+
+    // Glisser-déposer des fichiers n'importe où sur le formulaire ; la zone des images s'illumine.
+    let dragDepth = 0;
+    const carriesFiles = (event) => Array.from(event.dataTransfer ? event.dataTransfer.types : []).includes("Files");
+    const endDrag = () => { dragDepth = 0; tile.classList.remove("is-dragover"); };
+    input.form.addEventListener("dragenter", (event) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      dragDepth += 1;
+      tile.classList.add("is-dragover");
     });
+    input.form.addEventListener("dragover", (event) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    });
+    input.form.addEventListener("dragleave", (event) => {
+      if (carriesFiles(event) && --dragDepth <= 0) endDrag();
+    });
+    input.form.addEventListener("drop", (event) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      endDrag();
+      addFiles(Array.from(event.dataTransfer.files));
+    });
+
     if (addButton) addButton.addEventListener("click", (event) => { event.preventDefault(); input.click(); });
     if (removeButton) {
       removeButton.addEventListener("click", (event) => {
@@ -788,6 +860,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     $$(".toast").forEach(initToast);
     $$("textarea[data-char-source]").forEach(initCharCount);
+    $$(".composer textarea[data-char-source]").forEach(initAutoGrow);
     $$("[data-image-input]").forEach(initImageInput);
     $$("[data-recorder]").forEach(initRecorder);
     $$("input[type=range][data-output]").forEach(initRange);
