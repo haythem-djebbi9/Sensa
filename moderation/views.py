@@ -1,6 +1,8 @@
 import statistics
 from datetime import timedelta
 
+
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -12,6 +14,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
+
+
+
 
 from accounts.models import Membre
 from accounts.permissions import admin_required, moderator_required
@@ -71,6 +76,9 @@ def _filter_queue(queryset, key):
     return queryset.filter(Q(status=Publication.Status.UNDER_REVIEW) | Q(open_reports__gt=0))
 
 
+
+
+
 @moderator_required
 def queue(request):
     """File de modération : posts en revue et signalés, les plus risqués d'abord."""
@@ -97,6 +105,7 @@ def queue(request):
             "waited_seconds", flat=True
         )
     )
+    
     awaiting = _filter_queue(base, "a-traiter")
     context = {
         "page": page,
@@ -114,6 +123,8 @@ def queue(request):
     return render(request, "moderation/queue.html", context)
 
 
+
+
 @moderator_required
 @require_POST
 def decide(request, pk):
@@ -122,13 +133,11 @@ def decide(request, pk):
     if action not in {"approve", "block", "dismiss"}:
         messages.error(request, "Action inconnue.")
         return redirect(safe_next(request, reverse("moderation:queue")))
-
     now = timezone.now()
     open_reports = publication.signalements.filter(status=Signalement.Status.OPEN)
     oldest_report = open_reports.order_by("created_at").first()
     waited_from = oldest_report.created_at if oldest_report else publication.created_at
     previous = publication.status
-
     with transaction.atomic():
         if action == "dismiss":
             open_reports.update(status=Signalement.Status.DISMISSED, handled_by=request.user, handled_at=now)
@@ -160,6 +169,8 @@ def decide(request, pk):
     return redirect(safe_next(request, reverse("moderation:queue")))
 
 
+
+
 @login_required
 def report(request, pk):
     publication = get_object_or_404(Publication.objects.visible_to(request.user).select_related("author"), pk=pk)
@@ -182,6 +193,8 @@ def report(request, pk):
         messages.success(request, "Merci. Un modérateur va examiner cette publication.")
         return redirect("feed:home")
     return render(request, "moderation/report.html", {"publication": publication, "form": form, "already": already})
+
+
 
 
 @admin_required
@@ -210,6 +223,10 @@ def admin_settings(request):
     return render(request, "moderation/settings.html", context)
 
 
+
+
+
+
 @admin_required
 def accounts(request):
     members = Membre.objects.select_related("profile").annotate(posts=Count("publications")).order_by("-date_joined")
@@ -227,6 +244,9 @@ def accounts(request):
         "moderation/accounts.html",
         {"page": page, "query": query, "role": role, "roles": Membre.Role.choices},
     )
+
+
+
 
 
 @admin_required
