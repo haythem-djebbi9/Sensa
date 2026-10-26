@@ -853,6 +853,88 @@
     });
   }
 
+  function initReplySuggestions() {
+    document.addEventListener("click", async (event) => {
+      const target = event.target.closest("[data-comment-id], [data-cancel-reply]");
+      if (!target) return;
+      if (target.matches("[data-cancel-reply]")) {
+        const form = target.closest("[data-inline-reply-form]");
+        if (form) {
+          form.hidden = true;
+          const trigger = document.querySelector(`[aria-controls="${form.id}"]`);
+          if (trigger) {
+            trigger.setAttribute("aria-expanded", "false");
+            trigger.focus();
+          }
+          const output = $("[data-reply-suggestions]", form);
+          if (output) output.hidden = true;
+        }
+        return;
+      }
+      if (target.matches("[data-reply-trigger]")) {
+        const form = document.getElementById(`reply-form-${target.dataset.commentId}`);
+        if (!form) return;
+        form.hidden = false;
+        target.setAttribute("aria-expanded", "true");
+        const input = $("input[name='text']", form);
+        if (input) {
+          const mention = `@${target.dataset.commentUsername} `;
+          if (!input.value.startsWith(mention)) input.value = `${mention}${input.value}`;
+          input.focus();
+          input.setSelectionRange(input.value.length, input.value.length);
+        }
+        return;
+      }
+      if (!target.matches("[data-reply-suggestions-url]")) return;
+
+      const form = document.getElementById(`reply-form-${target.dataset.commentId}`);
+      const input = form ? $("input[name='text']", form) : null;
+      const output = form ? $("[data-reply-suggestions]", form) : null;
+      const csrf = form ? $("input[name='csrfmiddlewaretoken']", form) : null;
+      if (!form || !input || !output || !csrf) return;
+      form.hidden = false;
+      const replyTrigger = document.querySelector(`[data-reply-trigger][data-comment-id="${target.dataset.commentId}"]`);
+      if (replyTrigger) replyTrigger.setAttribute("aria-expanded", "true");
+      target.disabled = true;
+      target.setAttribute("aria-busy", "true");
+      output.hidden = false;
+      output.textContent = "L’IA prépare des suggestions…";
+      try {
+        const response = await fetch(target.dataset.replySuggestionsUrl, {
+          method: "POST",
+          headers: { "X-Requested-With": "fetch", "X-CSRFToken": csrf.value },
+          body: new URLSearchParams({ csrfmiddlewaretoken: csrf.value }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Suggestions indisponibles.");
+
+        output.replaceChildren();
+        const title = document.createElement("strong");
+        title.textContent = "Choisissez une suggestion pour la modifier avant de publier :";
+        output.appendChild(title);
+        data.suggestions.forEach((suggestion) => {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "reply-suggestion";
+          button.textContent = suggestion;
+          button.addEventListener("click", () => {
+            const mention = `@${target.dataset.commentUsername} `;
+            input.value = suggestion.startsWith(mention) ? suggestion : `${mention}${suggestion}`;
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+            output.hidden = true;
+          });
+          output.appendChild(button);
+        });
+      } catch (error) {
+        output.textContent = error.message || "Suggestions indisponibles.";
+      } finally {
+        target.disabled = false;
+        target.removeAttribute("aria-busy");
+      }
+    });
+  }
+
   /* ---------- Posts en cours d'analyse : rafraîchissement automatique ---------- */
   async function refreshCard(card) {
     const response = await fetch(card.dataset.cardUrl, { headers: { "X-Requested-With": "fetch" } });
@@ -1011,6 +1093,7 @@
     $$("input[type=range][data-output]").forEach(initRange);
     $$("[data-autosubmit]").forEach((field) => field.addEventListener("change", () => field.form && field.form.submit()));
     enhance(document);
+    initReplySuggestions();
     startNotifications();
 
     // Ferme les menus contextuels au clic extérieur.

@@ -6,6 +6,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.cache import cache as rate_cache
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.files.base import ContentFile
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -15,7 +16,7 @@ from django.views.decorators.http import require_POST
 from accounts.views import safe_next
 from enrichment import cache, pipeline
 from enrichment.models import AnalyseIA
-from social.models import Notification
+from social.models import CommentTranslation, Notification
 from social.services import annotate_social, notify
 from social.views import CommentForm
 
@@ -80,11 +81,24 @@ def create(request):
 
 def render_detail(request, publication, *, comment_form=None, be_kind=False, status=200):
     post = annotate_social(Publication.objects.filter(pk=publication.pk).for_cards(), request.user).get()
-    comments = post.commentaires.select_related("author", "author__profile")
+    comments = list(
+        post.commentaires.select_related("author", "author__profile", "parent__author")
+        .prefetch_related(Prefetch("translations", queryset=CommentTranslation.objects.order_by("language")))
+        .order_by("created_at", "pk")
+    )
+    comment_by_id = {comment.pk: comment for comment in comments}
+    for comment in comments:
+        depth = 0
+        parent = comment_by_id.get(comment.parent_id)
+        while parent is not None:
+            depth += 1
+            parent = comment_by_id.get(parent.parent_id)
+        comment.reply_depth = depth
     show_pipeline = request.user.pk == post.author_id or request.user.is_moderator
     context = {
         "post": post,
         "comments": comments,
+        "conversation_insight": getattr(post, "social_insight", None),
         "comment_form": comment_form or CommentForm(),
         "be_kind": be_kind,
         "analyses": post.analyses.exclude(type__in=AnalyseIA.SIDE_TYPES).order_by("created_at") if show_pipeline else None,

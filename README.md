@@ -26,8 +26,9 @@ avec Celery, Django Channels et l'API Groq (Whisper, gpt-oss, Qwen vision).
 - **Communauté sûre** : score de toxicité sur le texte, l'image et l'audio ; mise en revue ou blocage
   automatique selon des seuils réglables ; avertissement « Restons bienveillants » avant un commentaire agressif ;
   signalements et file de modération triée par risque.
-- **Social** : abonnements, j'aime, commentaires analysés par l'IA, republication, enregistrement de
-  publications dans une liste privée, notifications instantanées (WebSocket).
+- **Social** : abonnements, j'aime, commentaires imbriqués analysés par l'IA, traduction à la demande des commentaires,
+  suggestions IA pour répondre à un commentaire, résumé IA des conversations avec amorces de discussion,
+  republication, enregistrement de publications dans une liste privée, notifications instantanées (WebSocket).
 - **Découverte** : fil chronologique, fil « Pour vous » expliqué (« Proche de … que vous avez aimé »),
   recherche plein texte jusque dans les transcriptions, recherche par le sens, hashtags et tendances
   (suggestions quand un hashtag n'a aucun résultat), historique des recherches effaçable.
@@ -108,7 +109,7 @@ instantanée et que la carte du post se met à jour toute seule quand l'analyse 
 |---|---|---|---|---|
 | `accounts` | Commun : Auth et Users | toute l'équipe | `Membre`, `Moderateur`, `Administrateur` (héritage par proxy), `Profile` | — |
 | `publications` | 1. Publications | Hiba Chaabani | `Publication`, `Image`, `Audio`, `Republication`, `Enregistrement` | `describe_image(image_id)` → `Image.description_ia` |
-| `social` | 2. Interactions sociales | Med Nour Romdhani | `Abonnement`, `Commentaire`, `Reaction`, `Notification` | `analyse_tone(comment_id)` → `Commentaire.tone`, `tone_score` |
+| `social` | 2. Interactions sociales | Med Nour Romdhani | `Abonnement`, `Commentaire`, `CommentTranslation`, `ConversationInsight`, `Reaction`, `Notification` | `analyse_tone`, traduction des commentaires, suggestions de réponse, résumé IA et amorces de conversation |
 | `enrichment` | 3. Enrichissement IA asynchrone | Haythem Djebbi | `AnalyseIA`, `TentativeIA`, `CacheIA`, `PipelineConfig`, `Tag`, `PublicationTag` | `transcribe_audio`, `generate_tags`, `summarize_post`, `translate_transcription` + relances, cache, chien de garde |
 | `moderation` | 4. Modération et back-office | Chedly Rebai | `Signalement`, `ConfigurationIA`, `DecisionModeration` | `score_toxicity(text, image_description, transcription)` |
 | `feed` | 5. Fil, recherche, recommandations | Taieb Bel Hadj Ali | `Recherche` (+ `Publication.embedding`) | `embed_post(post_id)` → `Publication.embedding` |
@@ -160,7 +161,7 @@ puis bascule sur les replis locaux.
 | Tâche | Fournisseur principal (Groq) | Replis |
 |---|---|---|
 | Description d'image et suggestion de texte alternatif (module 1) | `qwen/qwen3.8-27b` (vision) | Claude → BLIP local → description basique |
-| Ton des commentaires (module 2) | `openai/gpt-oss-120b` | Claude → lexique FR/EN |
+| Ton, traduction et suggestions de réponse des commentaires, résumé et amorces de conversation (module 2) | `openai/gpt-oss-120b` | Claude ; lexique FR/EN pour le ton |
 | Transcription (module 3) | `whisper-large-v3-turbo` (langue + segments horodatés) | Whisper API OpenAI → faster-whisper / openai-whisper local |
 | Tags, thème, langue (module 3) | `openai/gpt-oss-120b` (JSON par schéma) | Claude → mots-clés locaux |
 | Résumé (module 3) | `openai/gpt-oss-120b` | Claude → extrait local |

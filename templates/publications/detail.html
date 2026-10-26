@@ -224,8 +224,28 @@
 
   <section class="card comments" id="commentaires" aria-labelledby="comments-title">
     <h2 id="comments-title">Conversation <span>{{ comments|length }}</span></h2>
+    {% if post.author_id == user.pk %}
+      <form method="post" action="{% url 'social:conversation_insight' post.pk %}" class="transcript-tools">
+        {% csrf_token %}
+        <button type="submit" class="btn btn-small btn-secondary">
+          {% icon "spark" 14 %}{% if conversation_insight %}Actualiser le résumé IA et les amorces{% else %}Résumer la conversation et proposer des questions{% endif %}
+        </button>
+      </form>
+    {% endif %}
+    {% if conversation_insight %}
+      <section class="summary-box" aria-label="Résumé IA de la conversation">
+        <div class="summary-head">{% badge "ai" "Résumé de la conversation" %}<span class="chip-soft">{{ conversation_insight.provider }}</span></div>
+        <p>{{ conversation_insight.summary }}</p>
+        {% if conversation_insight.starters %}
+          <strong>Pour poursuivre la conversation</strong>
+          <ul>{% for starter in conversation_insight.starters %}<li>{{ starter }}</li>{% endfor %}</ul>
+        {% endif %}
+        <small class="muted">Basé sur {{ conversation_insight.source_comment_count }} commentaire{{ conversation_insight.source_comment_count|pluralize }}.</small>
+      </section>
+    {% endif %}
     <form class="comment-box" method="post" action="{% url 'social:comment_create' post.pk %}">
       {% csrf_token %}
+      {{ comment_form.parent_id }}
       {% avatar user %}
       <label class="sr-only" for="{{ comment_form.text.id_for_label }}">Votre commentaire</label>
       {{ comment_form.text }}
@@ -243,6 +263,7 @@
             <form method="post" action="{% url 'social:comment_create' post.pk %}">
               {% csrf_token %}
               <input type="hidden" name="text" value="{{ comment_form.text.value }}">
+              <input type="hidden" name="parent_id" value="{{ comment_form.parent_id.value|default:'' }}">
               <input type="hidden" name="confirm" value="1">
               <button type="submit" class="btn btn-small btn-secondary">Publier quand même</button>
             </form>
@@ -252,7 +273,7 @@
     {% endif %}
 
     {% for comment in comments %}
-      <div class="comment" id="comment-{{ comment.pk }}">
+      <div class="comment" id="comment-{{ comment.pk }}" data-reply-depth="{{ comment.reply_depth }}" style="--reply-depth: {{ comment.reply_depth }}">
         <a href="{{ comment.author.get_absolute_url }}">{% avatar comment.author %}</a>
         <div>
           <strong><a href="{{ comment.author.get_absolute_url }}">{{ comment.author.display_name }}</a> <span>· {{ comment.created_at|since }}</span></strong>
@@ -264,8 +285,28 @@
           {% else %}
             <p>{{ comment.text|rich_text }}</p>
           {% endif %}
+          {% if comment.parent_id %}
+            <small class="reply-reference">En réponse à <a href="{{ comment.parent.author.get_absolute_url }}">@{{ comment.parent.author.username }}</a></small>
+          {% endif %}
           <div class="comment-meta">
             {% if comment.tone %}<span class="tone-chip tone-{{ comment.tone }}" title="Ton analysé par l'IA">{% icon "spark" 12 %}{{ comment.get_tone_display }}</span>{% endif %}
+            {% if comment.tone != "aggressive" %}
+              <button type="button" class="reply-trigger" data-reply-trigger aria-expanded="false" aria-controls="reply-form-{{ comment.pk }}" data-comment-id="{{ comment.pk }}" data-comment-username="{{ comment.author.username }}">Répondre</button>
+              <button type="button" class="reply-suggestion-trigger" data-reply-suggestions-url="{% url 'social:reply_suggestions' comment.pk %}" data-comment-id="{{ comment.pk }}" data-comment-username="{{ comment.author.username }}">{% icon "spark" 12 %}Suggérer une réponse</button>
+            {% endif %}
+            {% for translation in comment.translations.all %}
+              <span class="chip-soft">{{ translation.get_language_display }} : {{ translation.text }}</span>
+            {% endfor %}
+            <details>
+              <summary>Traduire</summary>
+              <div class="tool-group">
+                {% for code, label in translation_languages %}
+                  <form method="post" action="{% url 'social:comment_translate' comment.pk code %}">
+                    {% csrf_token %}<button type="submit">{{ label }}</button>
+                  </form>
+                {% endfor %}
+              </div>
+            </details>
             {% if comment.author_id == user.pk or post.author_id == user.pk or user.is_moderator %}
               <form method="post" action="{% url 'social:comment_delete' comment.pk %}" data-confirm="Supprimer ce commentaire ?">
                 {% csrf_token %}
@@ -273,6 +314,17 @@
               </form>
             {% endif %}
           </div>
+          {% if comment.tone != "aggressive" %}
+            <form class="inline-reply-form" id="reply-form-{{ comment.pk }}" method="post" action="{% url 'social:comment_create' post.pk %}" data-inline-reply-form hidden>
+              {% csrf_token %}
+              <input type="hidden" name="parent_id" value="{{ comment.pk }}">
+              <label class="sr-only" for="reply-text-{{ comment.pk }}">Votre réponse à @{{ comment.author.username }}</label>
+              <input id="reply-text-{{ comment.pk }}" type="text" name="text" maxlength="1000" placeholder="Répondre à @{{ comment.author.username }}…" required>
+              <button type="submit" class="btn btn-small btn-primary">Répondre</button>
+              <button type="button" class="btn btn-small btn-secondary" data-cancel-reply>Annuler</button>
+              <div class="reply-suggestions" data-reply-suggestions aria-live="polite" hidden></div>
+            </form>
+          {% endif %}
         </div>
       </div>
     {% empty %}

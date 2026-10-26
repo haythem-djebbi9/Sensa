@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Abonnement, Commentaire, Notification, Reaction
+from .models import Abonnement, Commentaire, CommentTranslation, ConversationInsight, Notification, Reaction
 
 
 @admin.register(Abonnement)
@@ -23,6 +23,17 @@ class CommentaireAdmin(admin.ModelAdmin):
     @admin.display(description="commentaire")
     def short_text(self, obj):
         return obj.text[:60]
+
+
+@admin.register(CommentTranslation)
+class CommentTranslationAdmin(admin.ModelAdmin):
+    list_display = ("comment", "language", "provider", "created_at")
+    list_filter = ("language", "provider")
+
+
+@admin.register(ConversationInsight)
+class ConversationInsightAdmin(admin.ModelAdmin):
+    list_display = ("publication", "source_comment_count", "provider", "generated_at")
 
 
 @admin.register(Reaction)

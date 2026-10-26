@@ -41,6 +41,9 @@ class Commentaire(models.Model):
 
     publication = models.ForeignKey("publications.Publication", on_delete=models.CASCADE, related_name="commentaires")
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="commentaires")
+    parent = models.ForeignKey(
+        "self", on_delete=models.CASCADE, null=True, blank=True, related_name="replies"
+    )
     text = models.TextField("commentaire", max_length=1000)
     created_at = models.DateTimeField(auto_now_add=True)
     # Écrits par la tâche IA analyse_tone (module 2).
@@ -59,6 +62,50 @@ class Commentaire(models.Model):
         return user.is_authenticated and (
             user.pk in (self.author_id, self.publication.author_id) or user.is_moderator
         )
+
+
+class CommentTranslation(models.Model):
+    """On-demand translation of a social comment."""
+
+    class Language(models.TextChoices):
+        FRENCH = "fr", "Français"
+        ENGLISH = "en", "Anglais"
+        ARABIC = "ar", "Arabe"
+
+    comment = models.ForeignKey(Commentaire, on_delete=models.CASCADE, related_name="translations")
+    language = models.CharField(max_length=2, choices=Language.choices)
+    text = models.TextField()
+    provider = models.CharField(max_length=32, blank=True)
+    created_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["language"]
+        constraints = [
+            models.UniqueConstraint(fields=["comment", "language"], name="comment_translation_unique")
+        ]
+
+    def __str__(self):
+        return f"Traduction {self.get_language_display()} — {self.comment}"
+
+
+class ConversationInsight(models.Model):
+    """AI summary and discussion prompts generated for a publication's comments."""
+
+    publication = models.OneToOneField(
+        "publications.Publication", on_delete=models.CASCADE, related_name="social_insight"
+    )
+    summary = models.TextField()
+    starters = models.JSONField(default=list)
+    source_comment_count = models.PositiveIntegerField(default=0)
+    provider = models.CharField(max_length=32, blank=True)
+    generated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "synthèse de conversation"
+        verbose_name_plural = "synthèses de conversation"
+
+    def __str__(self):
+        return f"Synthèse — {self.publication}"
 
 
 class Reaction(models.Model):
