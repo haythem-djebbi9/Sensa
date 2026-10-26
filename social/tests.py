@@ -5,6 +5,7 @@ from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
 from django.urls import reverse
 
+from accounts.models import Membre
 from core.testing import SensaTestCase, make_member
 from publications.models import Publication
 
@@ -12,6 +13,7 @@ from .ai import quick_tone
 from .consumers import NotificationConsumer
 from .models import Abonnement, Commentaire, Notification, Reaction
 from .services import group_name
+from .tasks import TONE_PRIORITY
 
 
 class FollowLikeTests(SensaTestCase):
@@ -45,6 +47,28 @@ class FollowLikeTests(SensaTestCase):
         Publication.objects.filter(pk=self.post.pk).update(status=Publication.Status.BLOCKED)
         response = self.client.post(reverse("social:like_toggle", args=[self.post.pk]))
         self.assertEqual(response.status_code, 404)
+
+
+class FollowListTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.maya = make_member("maya")
+        self.noah = make_member("noah")
+        Abonnement.objects.create(follower=self.lina, followed=self.maya)
+        Abonnement.objects.create(follower=self.noah, followed=self.maya)
+
+    def test_followers_page_lists_members_who_follow_the_profile(self):
+        self.client.force_login(self.maya)
+        response = self.client.get(reverse("social:followers", args=["maya"]))
+        self.assertContains(response, "Abonnés de maya")
+        self.assertEqual(set(response.context["page"].object_list), {self.lina, self.noah})
+
+    def test_following_page_lists_the_profile_subscriptions(self):
+        self.client.force_login(self.lina)
+        response = self.client.get(reverse("social:following", args=["lina"]))
+        self.assertContains(response, "Abonnements de lina")
+        self.assertEqual(set(response.context["page"].object_list), {self.maya})
+        self.assertIn(self.maya.pk, set(response.context["my_following"]))
 
 
 class CommentTests(SensaTestCase):
@@ -107,6 +131,57 @@ class NotificationViewsTests(SensaTestCase):
         self.client.post(reverse("social:notifications_mark_all_read"))
         self.assertFalse(Notification.objects.filter(is_read=False).exists())
         self.assertContains(self.client.get(reverse("social:notifications")), "maya a aimé votre publication")
+
+    def test_mark_all_read_json_response(self):
+        lina, maya = make_member("lina"), make_member("maya")
+        Notification.objects.create(recipient=lina, actor=maya, type="follow")
+        self.client.force_login(lina)
+        response = self.client.post(
+            reverse("social:notifications_mark_all_read"), HTTP_X_REQUESTED_WITH="fetch"
+        )
+        self.assertEqual(response.json(), {"unread": 0})
+        self.assertFalse(Notification.objects.filter(recipient=lina, is_read=False).exists())
+
+    def test_open_comment_notification_marks_it_read_and_anchors_the_comment(self):
+        lina, maya = make_member("lina"), make_member("maya")
+        post = Publication.objects.create(author=lina, text="Bonjour", status=Publication.Status.READY)
+        comment = Commentaire.objects.create(publication=post, author=maya, text="Merci")
+        notification = Notification.objects.create(
+            recipient=lina, actor=maya, type="comment", publication=post, commentaire=comment
+        )
+        self.client.force_login(lina)
+        response = self.client.get(reverse("social:notification_open", args=[notification.pk]))
+        self.assertRedirects(response, f"{post.get_absolute_url()}#comment-{comment.pk}")
+        notification.refresh_from_db()
+        self.assertTrue(notification.is_read)
+
+    def test_notification_title_and_icon_depend_on_the_type(self):
+        lina, maya = make_member("lina"), make_member("maya")
+        follow = Notification.objects.create(recipient=lina, actor=maya, type="follow")
+        ready = Notification.objects.create(recipient=lina, type="ai_ready")
+        self.assertEqual(follow.title, "maya vous suit désormais")
+        self.assertEqual(follow.icon, ("user", "mint"))
+        self.assertEqual(ready.icon, ("spark", "ai"))
+
+
+class CommentModerationTests(SensaTestCase):
+    def setUp(self):
+        self.post_author = make_member("maya")
+        self.commenter = make_member("lina")
+        self.moderator = make_member("camille", role=Membre.Role.MODERATEUR)
+        self.post = Publication.objects.create(author=self.post_author, text="Chanson", status=Publication.Status.READY)
+        self.comment = Commentaire.objects.create(publication=self.post, author=self.commenter, text="Merci")
+
+    def test_moderator_can_delete_any_comment(self):
+        self.assertTrue(self.comment.can_delete(self.moderator))
+
+    def test_anonymous_cannot_delete_a_comment(self):
+        self.assertFalse(self.comment.can_delete(AnonymousUser()))
+
+    def test_tone_priority_covers_every_tone(self):
+        self.assertEqual(set(TONE_PRIORITY), set(Commentaire.Tone.values))
+        self.assertEqual(TONE_PRIORITY["positive"], Notification.Priority.HIGH)
+        self.assertEqual(TONE_PRIORITY["aggressive"], Notification.Priority.LOW)
 
 
 class WebsocketTests(TestCase):
