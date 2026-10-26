@@ -1,0 +1,85 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Gestion des tags{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Module 3 · Enrichissement IA asynchrone</span>
+      <h1>Gestion des tags</h1>
+      <p>Les tags proposés par l'IA et ceux des auteurs. Un tag interdit n'est plus jamais proposé ni ajouté.</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'enrichment:tag_create' %}">{% icon "plus" 16 %}Nouveau tag</a>
+  </header>
+  {% include "enrichment/_tabs.html" %}
+
+  <div class="admin-metrics four" style="margin-top:1.2rem">
+    <div class="metric card"><span>Tags</span><strong>{{ totals.total }}</strong><small>dans la base</small></div>
+    <div class="metric card"><span>Tags proposés par l'IA</span><strong>{{ totals.ai_links }}</strong><small>liens publication ↔ tag</small></div>
+    <div class="metric card"><span>Interdits</span><strong>{{ totals.blocked }}</strong><small>exclus des suggestions</small></div>
+    <div class="metric card"><span>Inutilisés</span><strong>{{ totals.unused }}</strong><small>aucune publication</small></div>
+  </div>
+
+  {% if duplicates %}
+    <section class="card settings-card" style="margin-top:1rem" aria-labelledby="dup-title">
+      <div class="settings-title" style="margin-bottom:.4rem">
+        <span class="settings-icon settings-ai">{% icon "spark" %}</span>
+        <div><h2 id="dup-title">Doublons probables</h2><p>Variantes orthographiques ou collages de deux tags : fusionnez-les pour un fil plus propre.</p></div>
+      </div>
+      {% for pair in duplicates %}
+        <div class="role-row">
+          <div><strong>#{{ pair.drop.name }} → #{{ pair.keep.name }}</strong><span>{{ pair.reason }} · {{ pair.drop.uses }} et {{ pair.keep.uses }} publication(s)</span></div>
+          <form method="post" action="{% url 'enrichment:tag_merge' pair.drop.pk %}">
+            {% csrf_token %}<input type="hidden" name="target" value="{{ pair.keep.pk }}">
+            <button type="submit" class="btn btn-small btn-secondary">Fusionner</button>
+          </form>
+        </div>
+      {% endfor %}
+    </section>
+  {% endif %}
+
+  <form class="toolbar" method="get">
+    <label class="sr-only" for="q">Rechercher un tag</label>
+    <input class="input" id="q" type="search" name="q" value="{{ query }}" placeholder="Rechercher un tag">
+    <label class="sr-only" for="statut">Statut</label>
+    <select id="statut" name="statut" data-autosubmit>
+      <option value="">Tous les statuts</option>
+      {% for value, label in statuses %}<option value="{{ value }}"{% if status == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <label class="sr-only" for="tri">Tri</label>
+    <select id="tri" name="tri" data-autosubmit>
+      <option value="usage"{% if sort == "usage" %} selected{% endif %}>Les plus utilisés</option>
+      <option value="nom"{% if sort == "nom" %} selected{% endif %}>Ordre alphabétique</option>
+      <option value="recent"{% if sort == "recent" %} selected{% endif %}>Les plus récents</option>
+    </select>
+    <button type="submit" class="btn btn-secondary">{% icon "search" 16 %}Filtrer</button>
+  </form>
+
+  <section class="card table-wrap">
+    <table>
+      <thead><tr><th>Tag</th><th>Publications</th><th>Proposé par l'IA</th><th>Ajouté par l'auteur</th><th>Confiance IA moy.</th><th>Statut</th><th>Dernière utilisation</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {% for tag in page %}
+          <tr>
+            <td class="cell-main"><a href="{% url 'enrichment:tag_detail' tag.pk %}"><strong>#{{ tag.name }}</strong><span>{{ tag.description|default:"—"|truncatechars:60 }}</span></a></td>
+            <td>{{ tag.uses }}</td>
+            <td>{{ tag.ai_uses }}</td>
+            <td>{{ tag.author_uses }}</td>
+            <td>{% if tag.avg_confidence is not None %}{{ tag.avg_confidence|percent }}{% else %}—{% endif %}</td>
+            <td>{% if tag.status == "blocked" %}{% badge "blocked" "Interdit" %}{% else %}{% badge "ready" "Actif" %}{% endif %}</td>
+            <td>{% if tag.last_used %}{{ tag.last_used|since }}{% else %}—{% endif %}</td>
+            <td>
+              <div class="table-actions">
+                <a class="btn btn-small btn-ghost" href="{% url 'enrichment:tag_update' tag.pk %}">Modifier</a>
+                <a class="btn btn-small btn-danger" href="{% url 'enrichment:tag_delete' tag.pk %}">Supprimer</a>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not page.object_list %}<div class="empty-state">{% icon "hash" 28 %}<strong>Aucun tag</strong><span>Les tags apparaissent dès que l'IA enrichit une publication.</span></div>{% endif %}
+  </section>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

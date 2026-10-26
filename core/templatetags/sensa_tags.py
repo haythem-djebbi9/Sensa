@@ -212,8 +212,11 @@ def rich_text(value, autoescape=True):
 def active(context, *url_names, css="nav-active"):
     """Renvoie la classe CSS active si la vue courante fait partie des noms donnés."""
     match = getattr(context.get("request"), "resolver_match", None)
-    if match and match.view_name in url_names:
-        return css
+    if not match:
+        return ""
+    for name in url_names:
+        if name == match.view_name or (name.endswith(":*") and match.namespace == name[:-2]):
+            return css
     return ""
 
 

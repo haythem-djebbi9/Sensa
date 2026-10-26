@@ -219,7 +219,7 @@ class SubtitleAndTranslationTests(SensaTestCase):
         self.assertEqual(self.client.get(url).status_code, 404)
 
     def test_translation_on_demand(self):
-        with mock.patch("enrichment.ai.translate", return_value=("Hello. Goodbye.", "groq")):
+        with mock.patch("enrichment.ai.translate", return_value=("Hello. Goodbye.", "groq", "défaut")):
             with self.captureOnCommitCallbacks(execute=True):
                 response = self.client.post(reverse("enrichment:translate", args=[self.audio.pk]), {"lang": "en"})
         self.assertRedirects(response, f"{self.post.get_absolute_url()}#traductions", fetch_redirect_response=False)

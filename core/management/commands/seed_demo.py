@@ -112,6 +112,34 @@ def make_audio(name):
     return ContentFile(path.read_bytes(), name=f"demo-{name}.wav"), round(duration, 2)
 
 
+VOCABULARY = [
+    ("Sensa", "senza, sensas", "marque"),
+    ("Sousse", "souss, sous", "lieu"),
+    ("Sfax", "sfaks, s fax", "lieu"),
+    ("Bizerte", "bizert, bizerta", "lieu"),
+    ("Aïn Draham", "ain drahem, aïn drahem, ain draham", "lieu"),
+    ("Hammamet", "hamamet, hammamat", "lieu"),
+    ("Sidi Bou Saïd", "sidi bou said, sidi bousaid", "lieu"),
+    ("couscous", "cous cous", "autre"),
+]
+
+
+def seed_module3(admin):
+    """Vocabulaire de transcription et premier digest IA (module 3)."""
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    from enrichment.digest import generate
+    from enrichment.models import DigestIA, VocabulaireIA
+
+    for term, variants, category in VOCABULARY:
+        VocabulaireIA.objects.get_or_create(term=term, defaults={"variants": variants, "category": category, "created_by": admin})
+    if not DigestIA.objects.exists():
+        end = timezone.now()
+        generate(DigestIA.objects.create(period_start=end - timedelta(days=7), period_end=end, created_by=admin))
+
+
 class Command(BaseCommand):
     help = "Crée des comptes et des publications de démonstration pour Sensa."
 
@@ -193,6 +221,8 @@ class Command(BaseCommand):
         for index, username, text in COMMENTS:
             comment = Commentaire.objects.create(publication=posts[index], author=members[username], text=text)
             analyse_tone.delay(comment.pk)
+
+        seed_module3(members["admin"])
 
         statuses = ", ".join(
             f"{p.author.username}:{Publication.objects.get(pk=p.pk).status}" for p in posts

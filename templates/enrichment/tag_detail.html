@@ -1,0 +1,55 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}#{{ tag.name }}{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <a class="back-link" href="{% url 'enrichment:tags' %}"><span class="back-arrow">←</span>Tous les tags</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Tag {% if tag.status == "blocked" %}· interdit{% endif %}</span>
+      <h1>#{{ tag.name }}</h1>
+      <p>{{ tag.description|default:"Pas de description." }}</p>
+    </div>
+    <div class="table-actions">
+      <a class="btn btn-secondary" href="{% url 'feed:tag' tag.name %}">{% icon "eye" 16 %}Voir dans le fil</a>
+      <a class="btn btn-secondary" href="{% url 'enrichment:tag_update' tag.pk %}">{% icon "edit" 16 %}Modifier</a>
+      <a class="btn btn-danger" href="{% url 'enrichment:tag_delete' tag.pk %}">{% icon "trash" 16 %}Supprimer</a>
+    </div>
+  </header>
+
+  <div class="admin-metrics four">
+    <div class="metric card"><span>Publications</span><strong>{{ tag.uses }}</strong><small>au total</small></div>
+    <div class="metric card"><span>Proposé par l'IA</span><strong>{{ tag.ai_uses }}</strong><small>{% if tag.avg_confidence is not None %}confiance moyenne {{ tag.avg_confidence|percent }}{% else %}—{% endif %}</small></div>
+    <div class="metric card"><span>Ajouté par l'auteur</span><strong>{{ tag.author_uses }}</strong><small>via un #hashtag</small></div>
+    <div class="metric card"><span>Statut</span><strong class="metric-small">{{ tag.get_status_display }}</strong><small>créé le {{ tag.created_at|date:"d/m/Y" }}</small></div>
+  </div>
+
+  <div class="dashboard-grid">
+    <section class="card table-wrap">
+      <div class="chart-head padded"><h2>Publications avec ce tag</h2></div>
+      <table class="compact-table">
+        <thead><tr><th>Publication</th><th>Source</th><th>Confiance</th><th>Ajouté</th></tr></thead>
+        <tbody>
+          {% for link in links %}
+            <tr>
+              <td class="cell-main"><a href="{{ link.publication.get_absolute_url }}"><strong>{{ link.publication.excerpt|default:"(sans texte)"|truncatechars:70 }}</strong><span>@{{ link.publication.author.username }}</span></a></td>
+              <td>{% if link.source == "ia" %}{% badge "ai" "IA" %}{% else %}{% badge "review" "Auteur" "user" %}{% endif %}</td>
+              <td>{% if link.confidence is not None %}{{ link.confidence|percent }}{% else %}—{% endif %}</td>
+              <td>{{ link.created_at|since }}</td>
+            </tr>
+          {% empty %}
+            <tr><td colspan="4" class="muted">Aucune publication.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </section>
+    <form class="card form-card" method="post" action="{% url 'enrichment:tag_merge' tag.pk %}" data-confirm="Fusionner #{{ tag.name }} dans le tag choisi ? #{{ tag.name }} sera supprimé.">
+      {% csrf_token %}
+      <h2>Fusionner ce tag</h2>
+      <p class="muted">Les publications de #{{ tag.name }} recevront le tag choisi, puis #{{ tag.name }} sera supprimé.</p>
+      {% include "partials/field.html" with field=merge_form.target %}
+      <div class="form-actions"><button type="submit" class="btn btn-primary">Fusionner</button></div>
+    </form>
+  </div>
+</main>
+{% endblock %}

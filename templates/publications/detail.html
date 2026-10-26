@@ -96,7 +96,7 @@
         {% include "partials/audio_player.html" with audio=audio transcript_id="transcription" %}
         <div class="transcript-head">
           <div>
-            <span class="eyebrow">Transcription automatique{% if audio.language %} · {{ audio.language|language_label }}{% endif %}</span>
+            <span class="eyebrow">Transcription automatique{% if audio.language %} · {{ audio.language|language_label }}{% endif %}{% if audio.corrections.exists %} · relue par un humain{% endif %}</span>
             <h2>Lire en silence</h2>
           </div>
           {% if audio.transcript_lines %}
@@ -115,6 +115,9 @@
               <a href="{% url 'enrichment:subtitles' audio.pk 'vtt' %}">Sous-titres .vtt</a>
               <a href="{% url 'enrichment:subtitles' audio.pk 'srt' %}">Sous-titres .srt</a>
               <a href="{% url 'enrichment:subtitles' audio.pk 'txt' %}">Texte .txt</a>
+              {% if user.pk == post.author_id or user.is_moderator %}
+                <a href="{% url 'enrichment:transcription_edit' audio.pk %}">{% icon "edit" 12 %} Corriger</a>
+              {% endif %}
             </div>
             <div class="tool-group">
               <span>{% icon "globe" 14 %}Traduire</span>

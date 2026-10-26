@@ -22,7 +22,7 @@ from moderation.models import ConfigurationIA
 
 from . import pipeline
 from .dispatch import enqueue
-from .models import AnalyseIA, CacheIA, PipelineConfig
+from .models import AnalyseIA, CacheIA, DigestIA, PipelineConfig
 from .subtitles import to_srt, to_txt, to_vtt
 from .watchdog import requeue_stuck, stuck_queryset
 
@@ -167,6 +167,7 @@ def monitor(request):
         "stuck_before": timezone.now() - timedelta(minutes=config.stuck_after_minutes),
         "config": config,
         "config_form": PipelineConfigForm(instance=config) if request.user.is_admin_role else None,
+        "latest_digest": DigestIA.objects.filter(status=DigestIA.Status.DONE).first(),
     }
     return render(request, "enrichment/monitor.html", context)
 

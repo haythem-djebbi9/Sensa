@@ -9,6 +9,8 @@ Celery en mode « eager » et une couche Channels en mémoire.
 import os
 from pathlib import Path
 
+from celery.schedules import crontab
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -207,6 +209,8 @@ CELERY_TASK_ROUTES = {
 # Celery Beat : le « chien de garde » relance les analyses bloquées toutes les 5 minutes.
 CELERY_BEAT_SCHEDULE = {
     "sensa-pipeline-watchdog": {"task": "enrichment.pipeline_watchdog", "schedule": 300.0},
+    # Digest IA de la semaine écoulée, chaque lundi à 8 h.
+    "sensa-weekly-digest": {"task": "enrichment.weekly_digest", "schedule": crontab(minute=0, hour=8, day_of_week=1)},
 }
 
 # --- Django Channels (notifications temps réel, module 2) --------------------
@@ -224,7 +228,7 @@ else:
 SENSA_MAX_TEXT_LENGTH = 2000
 SENSA_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 Mo
 SENSA_MAX_IMAGES = 10  # images par publication (carrousel)
-SENSA_ALT_SUGGESTIONS_PER_HOUR = int(env("SENSA_ALT_SUGGESTIONS_PER_HOUR", "30"))  # appels à l'IA de vision
+SENSA_VISION_REQUESTS_PER_HOUR = int(env("SENSA_VISION_REQUESTS_PER_HOUR", "30"))  # appels à l'IA de vision (suggestion et régénération du texte alternatif)
 SENSA_MAX_IMAGE_PIXELS = 50_000_000  # 50 mégapixels : une image décompressée occupe ~3 octets par pixel
 SENSA_MAX_AUDIO_SECONDS = 180  # 3 minutes
 SENSA_POSTS_PER_HOUR = int(env("SENSA_POSTS_PER_HOUR", "10"))

@@ -1,0 +1,61 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Vocabulaire de transcription{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Module 3 · Enrichissement IA asynchrone</span>
+      <h1>Vocabulaire de transcription</h1>
+      <p>Les noms propres que Whisper doit savoir écrire. Les termes actifs lui sont transmis comme contexte, puis les variantes mal transcrites sont corrigées automatiquement.</p>
+    </div>
+    <a class="btn btn-primary" href="{% url 'enrichment:vocabulary_create' %}">{% icon "plus" 16 %}Nouveau terme</a>
+  </header>
+  {% include "enrichment/_tabs.html" %}
+
+  <div class="alert alert-ai" style="margin-top:1.2rem">
+    {% icon "mic" %}
+    <div>
+      <strong>Contexte envoyé à Whisper ({{ active_count }} terme{{ active_count|pluralize }} actif{{ active_count|pluralize }})</strong>
+      {% if whisper_prompt %}<span class="prompt-preview">{{ whisper_prompt }}</span>{% else %}Aucun terme actif : Whisper transcrit sans contexte.{% endif %}
+    </div>
+  </div>
+
+  <form class="toolbar" method="get">
+    <label class="sr-only" for="q">Rechercher</label>
+    <input class="input" id="q" type="search" name="q" value="{{ query }}" placeholder="Rechercher un terme ou une variante">
+    <label class="sr-only" for="categorie">Catégorie</label>
+    <select id="categorie" name="categorie" data-autosubmit>
+      <option value="">Toutes les catégories</option>
+      {% for value, label in categories %}<option value="{{ value }}"{% if category == value %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select>
+    <button type="submit" class="btn btn-secondary">{% icon "search" 16 %}Filtrer</button>
+  </form>
+
+  <section class="card table-wrap">
+    <table>
+      <thead><tr><th>Terme</th><th>Variantes corrigées</th><th>Catégorie</th><th>Statut</th><th>Ajouté</th><th><span class="sr-only">Actions</span></th></tr></thead>
+      <tbody>
+        {% for entry in page %}
+          <tr>
+            <td class="cell-main"><strong>{{ entry.term }}</strong><span>{% if entry.created_by %}par @{{ entry.created_by.username }}{% endif %}</span></td>
+            <td>{% for variant in entry.variants_list %}<span class="chip-variant">{{ variant }}</span>{% empty %}<span class="muted">—</span>{% endfor %}</td>
+            <td>{{ entry.get_category_display }}</td>
+            <td>{% if entry.is_active %}{% badge "ready" "Actif" %}{% else %}{% badge "review" "Désactivé" "x" %}{% endif %}</td>
+            <td>{{ entry.created_at|date:"d/m/Y" }}</td>
+            <td>
+              <div class="table-actions">
+                <form method="post" action="{% url 'enrichment:vocabulary_toggle' entry.pk %}">{% csrf_token %}<button type="submit" class="btn btn-small btn-ghost">{% if entry.is_active %}Désactiver{% else %}Activer{% endif %}</button></form>
+                <a class="btn btn-small btn-secondary" href="{% url 'enrichment:vocabulary_update' entry.pk %}">Modifier</a>
+                <a class="btn btn-small btn-danger" href="{% url 'enrichment:vocabulary_delete' entry.pk %}">Supprimer</a>
+              </div>
+            </td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% if not page.object_list %}<div class="empty-state">{% icon "mic" 28 %}<strong>Vocabulaire vide</strong><span>Ajoutez les noms de lieux, de personnes ou de marques que Whisper écrit mal.</span></div>{% endif %}
+  </section>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

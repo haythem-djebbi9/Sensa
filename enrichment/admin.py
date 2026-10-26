@@ -1,6 +1,9 @@
 from django.contrib import admin
 
-from .models import AnalyseIA, CacheIA, PipelineConfig, PublicationTag, Tag, TentativeIA
+from .models import (
+    AnalyseIA, CacheIA, CorrectionTranscription, DigestIA, PipelineConfig, PromptIA, PublicationTag, Tag, TentativeIA,
+    VocabulaireIA,
+)
 
 
 class TentativeInline(admin.TabularInline):
@@ -45,3 +48,28 @@ class TagAdmin(admin.ModelAdmin):
     list_display = ("name", "created_at")
     search_fields = ("name",)
     inlines = [PublicationTagInline]
+
+
+@admin.register(VocabulaireIA)
+class VocabulaireIAAdmin(admin.ModelAdmin):
+    list_display = ("term", "category", "is_active", "variants", "created_by", "updated_at")
+    list_filter = ("category", "is_active")
+    search_fields = ("term", "variants")
+
+
+@admin.register(PromptIA)
+class PromptIAAdmin(admin.ModelAdmin):
+    list_display = ("task", "version", "name", "is_active", "created_by", "updated_at")
+    list_filter = ("task", "is_active")
+
+
+@admin.register(CorrectionTranscription)
+class CorrectionTranscriptionAdmin(admin.ModelAdmin):
+    list_display = ("audio", "author", "is_revert", "note", "created_at")
+    raw_id_fields = ("audio", "author")
+
+
+@admin.register(DigestIA)
+class DigestIAAdmin(admin.ModelAdmin):
+    list_display = ("title", "period_start", "period_end", "status", "provider", "created_at")
+    list_filter = ("status",)

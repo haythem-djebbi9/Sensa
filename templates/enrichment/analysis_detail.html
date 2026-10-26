@@ -3,7 +3,8 @@
 {% block title %}Analyse #{{ analysis.pk }}{% endblock %}
 {% block content %}
 <main class="page narrow-page">
-  <a class="back-link" href="{% url 'enrichment:monitor' %}"><span class="back-arrow">←</span>Tableau de bord du pipeline</a>
+  {% include "enrichment/_tabs.html" %}
+  <a class="back-link" style="margin-top:1rem" href="{% url 'enrichment:monitor' %}"><span class="back-arrow">←</span>Tableau de bord du pipeline</a>
   <header class="page-header">
     <div>
       <span class="eyebrow">Analyse #{{ analysis.pk }}</span>

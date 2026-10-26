@@ -1,0 +1,34 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{% url 'enrichment:prompts' %}"><span class="back-arrow">←</span>Prompts IA</a>
+  <header class="page-header"><div><span class="eyebrow">Prompts IA versionnés</span><h1>{{ title }}</h1></div></header>
+  <form method="post" class="card form-card" novalidate>
+    {% csrf_token %}
+    {% include "partials/form_errors.html" %}
+    <div class="form-grid">
+      {% include "partials/field.html" with field=form.task %}
+      {% include "partials/field.html" with field=form.name %}
+    </div>
+    {% include "partials/field.html" with field=form.template %}
+    <div class="alert alert-info">
+      {% icon "edit" %}
+      <div>
+        <strong>Variables disponibles</strong>
+        Tags : <code>{text}</code>*, <code>{description}</code>, <code>{transcription}</code>, <code>{max_tags}</code>, <code>{categories}</code> ·
+        Résumé : <code>{text}</code>*, <code>{description}</code>, <code>{transcription}</code> ·
+        Traduction : <code>{text}</code>*, <code>{language}</code>*.
+        Les variables marquées * sont obligatoires. Pour écrire une accolade, doublez-la : <code>{{ "{{" }}</code>. Le format de la réponse (JSON) est imposé par le code : inutile de le décrire.
+      </div>
+    </div>
+    {% include "partials/field.html" with field=form.notes %}
+    <label class="switch-row">{{ form.activate_now }}<span>{{ form.activate_now.label }}</span></label>
+    <div class="form-actions">
+      <a class="btn btn-ghost" href="{% url 'enrichment:prompts' %}">Annuler</a>
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </form>
+</main>
+{% endblock %}

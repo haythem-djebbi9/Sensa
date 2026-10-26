@@ -1,0 +1,63 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags enrichment_tags %}
+{% block title %}Laboratoire IA{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Module 3 · Enrichissement IA asynchrone</span>
+      <h1>Laboratoire IA</h1>
+      <p>Testez chaque tâche d'IA sur vos propres contenus, comparez les versions de prompts et vérifiez le vocabulaire de transcription — sans rien publier.</p>
+    </div>
+  </header>
+  {% include "enrichment/_tabs.html" %}
+
+  <div class="lab-grid">
+    <form method="post" enctype="multipart/form-data" class="card form-card" novalidate>
+      {% csrf_token %}
+      <h2>Entrée</h2>
+      {% include "partials/form_errors.html" %}
+      {% include "partials/field.html" with field=form.task %}
+      {% include "partials/field.html" with field=form.text %}
+      <div class="form-grid">
+        {% include "partials/field.html" with field=form.image %}
+        {% include "partials/field.html" with field=form.audio %}
+      </div>
+      <div class="form-grid">
+        {% include "partials/field.html" with field=form.language %}
+        {% include "partials/field.html" with field=form.prompt %}
+      </div>
+      <p class="muted lab-hint">Texte : tags, résumé, traduction, ton, toxicité · Image : description · Audio : transcription (avec le vocabulaire actif). Le test s'exécute immédiatement ; les publications, elles, sont toujours analysées en arrière-plan.</p>
+      <div class="form-actions"><button type="submit" class="btn btn-primary">{% icon "spark" 16 %}Lancer le test</button></div>
+    </form>
+
+    <section class="card form-card" aria-live="polite">
+      <h2>Résultat</h2>
+      {% if output %}
+        <div class="lab-meta">
+          <span><strong>{{ output.task_label }}</strong></span>
+          <span>{% icon "spark" 14 %}{{ output.provider|default:"—" }}{% if output.model %} · {{ output.model }}{% endif %}</span>
+          <span>{% icon "clock" 14 %}{{ output.latency_ms|ms_label }}</span>
+          <span>{{ output.tokens|compact }} jetons</span>
+        </div>
+        {% if output.error %}
+          <div class="alert alert-danger">{% icon "alert" %}<div><strong>Échec</strong>{{ output.error }}</div></div>
+        {% else %}
+          {% with r=output.result %}
+            {% if r.summary %}<div class="summary-box" style="margin-top:0"><div class="summary-head">{% badge "ai" "Résumé IA" %}{% if r.sentiment %}<span class="chip-soft">Ton {{ r.sentiment|sentiment_label|lower }}</span>{% endif %}</div><p>{{ r.summary }}</p></div>{% endif %}
+            {% if r.description %}<div class="summary-box" style="margin-top:0"><div class="summary-head">{% badge "ai" "Description IA" %}</div><p>{{ r.description }}</p></div>{% endif %}
+            {% if r.translation %}<div class="summary-box" style="margin-top:0"><div class="summary-head">{% badge "ai" r.language|language_label "globe" %}</div><p>{{ r.translation }}</p></div>{% endif %}
+            {% if r.ai_tags or r.author_tags %}<div class="tag-row">{% for name in r.author_tags %}<span>#{{ name }}</span>{% endfor %}{% for tag in r.ai_tags %}<span class="tag-ai-static">#{{ tag.name }}{% if tag.confidence is not None %} · {{ tag.confidence|percent }}{% endif %}</span>{% endfor %}</div>{% if r.category %}<p class="muted" style="margin-top:.6rem">Thème : {{ r.category|category_label }} · Langue : {{ r.language|language_label }}</p>{% endif %}{% endif %}
+            {% if r.tone %}<p><span class="tone-chip tone-{{ r.tone }}">{% icon "spark" 12 %}{{ r.tone }}</span> confiance {{ r.score|percent }}</p>{% endif %}
+            {% if r.labels is not None and r.justification %}<p><span class="score {% if r.score >= 0.85 %}score-high{% elif r.score < 0.5 %}score-low{% endif %}" style="display:inline-grid">{{ r.score|percent_int }}%</span> {{ r.justification }}</p>{% endif %}
+            {% if r.segments %}<div class="transcript" style="margin-top:0">{% for seg in r.segments %}<p><button type="button">{{ seg.start|duration }}</button><span>{{ seg.text }}</span></p>{% endfor %}</div>{% if r.vocabulary_fixes %}<p class="muted">{{ r.vocabulary_fixes }} correction(s) automatique(s) grâce au vocabulaire.</p>{% endif %}{% endif %}
+          {% endwith %}
+          <details class="chart-data" style="margin-top:.8rem"><summary>Réponse JSON complète</summary><pre class="json-view">{{ output.result_json }}</pre></details>
+        {% endif %}
+      {% else %}
+        <div class="empty-state">{% icon "spark" 28 %}<strong>Aucun test pour l'instant</strong><span>Choisissez une tâche, saisissez un contenu puis lancez le test.</span></div>
+      {% endif %}
+    </section>
+  </div>
+</main>
+{% endblock %}

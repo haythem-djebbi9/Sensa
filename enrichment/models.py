@@ -164,11 +164,21 @@ class PipelineConfig(models.Model):
 
 
 class Tag(models.Model):
+    class Status(models.TextChoices):
+        ACTIVE = "active", "Actif"
+        BLOCKED = "blocked", "Interdit"
+
     name = models.CharField("nom", max_length=50, unique=True)
+    description = models.TextField("description", max_length=300, blank=True)
+    status = models.CharField(
+        "statut", max_length=8, choices=Status.choices, default=Status.ACTIVE,
+        help_text="Un tag interdit n'est plus jamais proposé par l'IA ni ajouté depuis un #hashtag.",
+    )
     publications = models.ManyToManyField(
         "publications.Publication", related_name="tags", blank=True, through="PublicationTag"
     )
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["name"]
@@ -198,3 +208,136 @@ class PublicationTag(models.Model):
 
     def __str__(self):
         return f"{self.tag} ({self.get_source_display()})"
+
+
+class VocabulaireIA(models.Model):
+    """Termes que Whisper doit savoir écrire (noms de lieux, de personnes, de marques…).
+
+    Les termes actifs sont transmis à Whisper comme contexte ; les variantes mal
+    transcrites sont ensuite corrigées automatiquement dans le texte et les segments.
+    """
+
+    class Category(models.TextChoices):
+        PLACE = "lieu", "Lieu"
+        PERSON = "personne", "Personne"
+        BRAND = "marque", "Marque ou produit"
+        TECHNICAL = "technique", "Terme technique"
+        OTHER = "autre", "Autre"
+
+    term = models.CharField("terme (orthographe correcte)", max_length=100, unique=True)
+    variants = models.CharField(
+        "variantes à corriger", max_length=300, blank=True,
+        help_text="Transcriptions erronées fréquentes, séparées par des virgules (ex. : ain drahem, aïn drahem).",
+    )
+    category = models.CharField("catégorie", max_length=10, choices=Category.choices, default=Category.PLACE)
+    is_active = models.BooleanField("actif", default=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["term"]
+        verbose_name = "terme du vocabulaire"
+        verbose_name_plural = "vocabulaire de transcription"
+
+    def __str__(self):
+        return self.term
+
+    @property
+    def variants_list(self):
+        return [v.strip() for v in self.variants.split(",") if v.strip()]
+
+
+class PromptIA(models.Model):
+    """Version d'un prompt utilisé par une tâche IA du module 3 (une seule version active par tâche)."""
+
+    class Task(models.TextChoices):
+        TAGS = "tags", "Tags, thème et langue"
+        SUMMARY = "summary", "Résumé"
+        TRANSLATION = "translation", "Traduction"
+
+    task = models.CharField("tâche", max_length=12, choices=Task.choices)
+    name = models.CharField("nom", max_length=80)
+    template = models.TextField("modèle de prompt")
+    version = models.PositiveSmallIntegerField(default=1, editable=False)
+    is_active = models.BooleanField("actif", default=False)
+    notes = models.TextField("notes", blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["task", "-version"]
+        verbose_name = "prompt IA"
+        verbose_name_plural = "prompts IA"
+        constraints = [
+            models.UniqueConstraint(fields=["task", "version"], name="version_unique_par_tache"),
+            models.UniqueConstraint(fields=["task"], condition=models.Q(is_active=True), name="un_prompt_actif_par_tache"),
+        ]
+
+    def __str__(self):
+        return f"{self.get_task_display()} v{self.version} · {self.name}"
+
+    def save(self, *args, **kwargs):
+        if self._state.adding and not self.pk:
+            last = PromptIA.objects.filter(task=self.task).aggregate(models.Max("version"))["version__max"] or 0
+            self.version = last + 1
+        super().save(*args, **kwargs)
+
+
+class CorrectionTranscription(models.Model):
+    """Historique des corrections humaines d'une transcription (la version IA d'origine reste récupérable)."""
+
+    audio = models.ForeignKey("publications.Audio", on_delete=models.CASCADE, related_name="corrections")
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, related_name="+")
+    text_before = models.TextField("texte avant")
+    segments_before = models.JSONField(default=list)
+    text_after = models.TextField("texte après")
+    segments_after = models.JSONField(default=list)
+    note = models.CharField("note", max_length=200, blank=True)
+    is_revert = models.BooleanField("retour à la version IA", default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        verbose_name = "correction de transcription"
+        verbose_name_plural = "corrections de transcription"
+
+    def __str__(self):
+        return f"Correction de l'audio {self.audio_id} ({self.created_at:%d/%m/%Y %H:%M})"
+
+
+class DigestIA(models.Model):
+    """Synthèse IA des tendances de la communauté sur une période."""
+
+    class Status(models.TextChoices):
+        PENDING = "PENDING", "En préparation"
+        DONE = "DONE", "Prêt"
+        FAILED = "FAILED", "Échec"
+
+    period_start = models.DateTimeField("début de période")
+    period_end = models.DateTimeField("fin de période")
+    title = models.CharField("titre", max_length=160, blank=True)
+    summary = models.TextField("synthèse", blank=True)
+    highlights = models.JSONField("temps forts", default=list, blank=True)
+    top_tags = models.JSONField("tags les plus utilisés", default=list, blank=True)
+    stats = models.JSONField("statistiques", default=dict, blank=True)
+    status = models.CharField(max_length=8, choices=Status.choices, default=Status.PENDING)
+    provider = models.CharField("fournisseur", max_length=40, blank=True)
+    error = models.TextField(blank=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True, related_name="+"
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-period_end", "-created_at"]
+        verbose_name = "digest IA"
+        verbose_name_plural = "digests IA"
+
+    def __str__(self):
+        return self.title or f"Digest du {self.period_start:%d/%m} au {self.period_end:%d/%m/%Y}"
