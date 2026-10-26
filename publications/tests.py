@@ -874,3 +874,20 @@ class DraftTests(SensaTestCase):
         _, draft = self.save_draft()
         self.client.force_login(make_member("noah"))
         self.assertEqual(self.client.post(reverse("publications:delete", args=[draft.pk])).status_code, 403)
+
+
+class AspectRatioTests(SensaTestCase):
+    def test_ratio_kept_within_instagram_limits(self):
+        cases = {(900, 1200): "0.8000", (1080, 1350): "0.8000", (1600, 900): "1.7778", (4000, 1000): "1.9100"}
+        for (width, height), expected in cases.items():
+            self.assertEqual(Image(width=width, height=height).aspect_ratio, expected)
+        self.assertEqual(Image().aspect_ratio, "4 / 3")
+
+    def test_dimensions_saved_and_used_by_card(self):
+        lina = make_member("lina")
+        self.client.force_login(lina)
+        self.publish(self.client, {"text": "Portrait"}, {"image": image_upload("portrait.png", size=(300, 400))})
+        post = Publication.objects.get()
+        image = post.images.get()
+        self.assertEqual((image.width, image.height), (300, 400))
+        self.assertContains(self.client.get(reverse("publications:card", args=[post.pk])), 'style="--ratio: 0.8000"')

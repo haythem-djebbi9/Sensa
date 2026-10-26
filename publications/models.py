@@ -165,7 +165,9 @@ def build_display_version(field_file, max_side=1280):
 
 class Image(models.Model):
     publication = models.ForeignKey(Publication, on_delete=models.CASCADE, related_name="images")
-    file = models.ImageField("fichier", upload_to="publications/images/%Y/%m/")
+    file = models.ImageField("fichier", upload_to="publications/images/%Y/%m/", width_field="width", height_field="height")
+    width = models.PositiveIntegerField("largeur (px)", null=True, editable=False)
+    height = models.PositiveIntegerField("hauteur (px)", null=True, editable=False)
     # Version allégée affichée dans le fil et les vignettes ; l'original reste sur la page de détail.
     display = models.ImageField("version allégée", upload_to="publications/images/%Y/%m/", blank=True, editable=False)
     alt_text = models.CharField("texte alternatif (auteur)", max_length=300, blank=True)
@@ -192,6 +194,17 @@ class Image(models.Model):
     @property
     def display_url(self):
         return (self.display or self.file).url
+
+    # Proportions (largeur / hauteur) affichées dans le fil, comme Instagram : de 4:5 en portrait à 1,91:1 en paysage.
+    MIN_RATIO, MAX_RATIO = 4 / 5, 1.91
+
+    @property
+    def aspect_ratio(self):
+        """Proportions de l'image dans le fil, sous forme de texte pour la propriété CSS aspect-ratio."""
+        if not self.width or not self.height:
+            return "4 / 3"
+        ratio = min(max(self.width / self.height, self.MIN_RATIO), self.MAX_RATIO)
+        return f"{ratio:.4f}"
 
     @property
     def alt(self):
