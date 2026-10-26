@@ -79,7 +79,7 @@ def resend_confirmation(request):
 
 @login_required
 def profile(request, username):
-    from django.db.models import OuterRef, Subquery
+    from django.db.models import OuterRef, Subquery, UUIDField, Value
 
     from publications.models import Enregistrement, Publication, Republication
     from social.models import Abonnement
@@ -96,8 +96,15 @@ def profile(request, username):
     if tab not in ("republications", "enregistres", "brouillons") or (tab in ("enregistres", "brouillons") and not is_me):
         tab = "publications"  # les enregistrements et les brouillons sont privés
     if tab == "republications":
-        reposted_at = member_reposts.filter(publication=OuterRef("pk")).values("created_at")[:1]
-        posts = annotate_social(reposted.for_cards(), request.user).annotate(reposted_at=Subquery(reposted_at))
+        # Chaque carte affiche « … a republié » et le message éventuel du membre.
+        repost = member_reposts.filter(publication=OuterRef("pk"))
+        posts = annotate_social(reposted.for_cards(), request.user).annotate(
+            reposted_at=Subquery(repost.values("created_at")[:1]),
+            reposted_message=Subquery(repost.values("message")[:1]),
+            reposted_by_id=Value(member.pk, output_field=UUIDField()),
+            reposted_by_name=Value(member.display_name),
+            reposted_by_username=Value(member.username),
+        )
         posts = posts.order_by("-reposted_at")
     elif tab == "enregistres":
         my_saves = Enregistrement.objects.filter(member=member)
