@@ -37,11 +37,11 @@
   {% if query %}
     <div class="results-head">
       <h2>Résultats</h2>
-      <span>{{ results|length }} résultat{{ results|length|pluralize }}{% if used_mode == "sens" %} · recherche sémantique{% elif used_mode == "tag" %} · hashtag{% endif %}</span>
+      <span>{{ page.paginator.count }} résultat{{ page.paginator.count|pluralize }}{% if used_mode == "sens" %} · recherche sémantique{% elif used_mode == "tag" %} · hashtag{% endif %}</span>
     </div>
     {% if notice %}<div class="alert alert-ai page-alert">{% icon "spark" %}<div>{{ notice }}</div></div>{% endif %}
     <div class="search-results">
-      {% for post in results %}
+      {% for post in page.object_list %}
         {% with image=post.main_image audio=post.audio_or_none %}
           <a class="card result-card" href="{{ post.get_absolute_url }}">
             {% if image %}
@@ -69,12 +69,23 @@
         </div>
       {% endfor %}
     </div>
+    {% include "partials/pagination.html" with page=page %}
   {% else %}
     <div class="search-aside">
       {% if recent %}
         <section>
-          <h2>Vos recherches récentes</h2>
-          <div class="chip-cloud">{% for item in recent %}<a href="?q={{ item|urlencode }}">{% icon "clock" 14 %}{{ item }}</a>{% endfor %}</div>
+          <div class="section-header">
+            <h2>Vos recherches récentes</h2>
+            <form method="post" action="{% url 'feed:clear_searches' %}">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-ghost btn-small">Effacer tout</button>
+            </form>
+          </div>
+          <div class="chip-cloud">
+            {% for item in recent %}
+              <a href="?q={{ item|urlencode }}">{% icon "clock" 14 %}{{ item }}</a>
+            {% endfor %}
+          </div>
         </section>
       {% endif %}
       <section>

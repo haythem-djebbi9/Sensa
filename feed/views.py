@@ -67,6 +67,7 @@ def search(request):
     if mode not in (Recherche.Mode.KEYWORDS, Recherche.Mode.SEMANTIC):
         mode = Recherche.Mode.KEYWORDS
     results, used_mode, notice = services.search(request.user, query, kind, mode)
+    page = Paginator(results, settings.SENSA_FEED_PAGE_SIZE).get_page(request.GET.get("page"))
     context = {
         "query": query,
         "kind": kind,
@@ -75,16 +76,53 @@ def search(request):
         "used_mode": used_mode,
         "notice": notice,
         "results": results,
+        "page": page,
         "trending": services.trending_tags(),
         "recent": services.recent_searches(request.user) if not query else [],
     }
     return render(request, "feed/search.html", context)
 
 
+from django.contrib import messages
+from django.shortcuts import get_object_or_404, redirect
+
+
+@login_required
+def clear_searches(request):
+    if request.method == "POST":
+        Recherche.objects.filter(member=request.user).delete()
+        messages.success(request, "Recherches récentes effacées.")
+    return redirect("feed:search")
+
+
+@login_required
+def delete_search(request, pk):
+    if request.method == "POST":
+        recherche = get_object_or_404(Recherche, pk=pk, member=request.user)
+        recherche.delete()
+        messages.success(request, "Recherche supprimée.")
+    return redirect("feed:search")
+
+
+@login_required
+def delete_search(request, pk):
+    if request.method == "POST":
+        recherche = get_object_or_404(Recherche, pk=pk, member=request.user)
+        recherche.delete()
+        messages.success(request, "Recherche supprimée.")
+    return redirect("feed:search")
+
+
 @login_required
 def tag(request, name):
-    name = slug_tag(name)
+    name = slug_tag(name).strip()
+    if not name:
+        from django.shortcuts import redirect
+        return redirect("feed:search")
     tag_obj = Tag.objects.filter(name=name).first()
     posts = services.cards(request.user).filter(tags__name=name).order_by("-created_at") if tag_obj else []
     page = Paginator(posts, settings.SENSA_FEED_PAGE_SIZE).get_page(request.GET.get("page"))
-    return render(request, "feed/tag.html", {"tag_name": name, "tag": tag_obj, "page": page})
+    suggestions = []
+    if not tag_obj and not posts:
+        suggestions = services.trending_tags(limit=6)
+    return render(request, "feed/tag.html", {"tag_name": name, "tag": tag_obj, "page": page, "suggestions": suggestions})

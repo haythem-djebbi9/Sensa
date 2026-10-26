@@ -16,6 +16,16 @@
       {% include "partials/post_card.html" %}
     {% empty %}
       <div class="card empty-state">{% icon "hash" 28 %}<strong>Aucune publication avec ce tag</strong><span>Utilisez #{{ tag_name }} dans votre prochaine publication !</span></div>
+      {% if suggestions %}
+        <div class="card">
+          <strong>Tags tendances</strong>
+          <div class="chip-cloud" style="margin-top:0.75rem;">
+            {% for tag in suggestions %}
+              <a href="{% url 'feed:tag' tag.name %}">#{{ tag.name }} <small>{{ tag.nb }}</small></a>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
     {% endfor %}
   </div>
   {% include "partials/pagination.html" %}

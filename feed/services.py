@@ -1,5 +1,6 @@
 """Fil chronologique, recherche plein texte / sémantique et recommandations (module 5)."""
 
+import re
 from datetime import timedelta
 
 from django.db import connection
@@ -251,7 +252,13 @@ def semantic_search(user, query, kind="tout", limit=30):
 
 
 def hashtag_search(user, tag_name, kind="tout"):
+    tag_name = slug_tag(tag_name)
     posts = list(_filter_kind(cards(user), kind).filter(tags__name=tag_name).order_by("-created_at")[:50])
+    # Prefetch tags for display
+    from publications.models import Publication
+    post_ids = [p.pk for p in posts]
+    if post_ids:
+        posts = list(cards(user, Publication.objects.filter(pk__in=post_ids)).order_by("-created_at"))
     for post in posts:
         post.match = f"Tag #{tag_name}"
         post.match_icon = "hash"
@@ -261,12 +268,18 @@ def hashtag_search(user, tag_name, kind="tout"):
 def search(user, query, kind="tout", mode="mots"):
     """Renvoie (résultats, mode réellement utilisé, message d'information)."""
     query = (query or "").strip()[:200]
-    if not query:
-        return [], mode, ""
     notice = ""
-    if query.startswith("#") and len(query) > 1:
+    # Nettoyage : ignorer les requêtes ne contenant que des symboles
+    cleaned = re.sub(r"[#\s\.,;:!?«»\"'()\-_/\\]+", " ", query).strip()
+    if not cleaned:
+        return [], mode, ""
+    # Si la requête est majoritairement des hashtags, normaliser
+    if query.lstrip().startswith("#") and len(query.lstrip()) > 1:
+        slug = slug_tag(query)
+        if not slug:
+            return [], mode, ""
         mode = Recherche.Mode.HASHTAG
-        results = hashtag_search(user, slug_tag(query), kind)
+        results = hashtag_search(user, slug, kind)
     elif mode == Recherche.Mode.SEMANTIC:
         results = semantic_search(user, query, kind)
     else:
@@ -281,9 +294,15 @@ def search(user, query, kind="tout", mode="mots"):
     return results, mode, notice
 
 
+from django.core.cache import cache
+
 def trending_tags(limit=10, days=7):
+    cache_key = f"feed:trending_tags:{limit}:{days}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     since = timezone.now() - timedelta(days=days)
-    return (
+    result = list(
         Tag.objects.annotate(
             nb=Count(
                 "publications",
@@ -293,6 +312,8 @@ def trending_tags(limit=10, days=7):
         .filter(nb__gt=0)
         .order_by("-nb", "name")[:limit]
     )
+    cache.set(cache_key, result, 300)
+    return result
 
 
 def recent_searches(user, limit=5):
