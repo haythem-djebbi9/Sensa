@@ -104,4 +104,7 @@ def tag(request, name):
     tag_obj = Tag.objects.filter(name=name).first()
     posts = services.cards(request.user).filter(tags__name=name).order_by("-created_at") if tag_obj else []
     page = Paginator(posts, settings.SENSA_FEED_PAGE_SIZE).get_page(request.GET.get("page"))
-    return render(request, "feed/tag.html", {"tag_name": name, "tag": tag_obj, "page": page})
+    suggestions = []
+    if not tag_obj and not posts:
+        suggestions = services.trending_tags(limit=6)
+    return render(request, "feed/tag.html", {"tag_name": name, "tag": tag_obj, "page": page, "suggestions": suggestions})
