@@ -759,3 +759,26 @@ class RegenerateDescriptionTests(SensaTestCase):
         self.regenerate()
         response = self.client.get(self.post.get_absolute_url())
         self.assertContains(response, "Trop de demandes à l&#x27;IA")
+
+
+class CarouselAccessibilityTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+        self.publish(self.client, {"text": "Trois photos", "alt_text": ["Le port", "", ""]},
+                     {"image": [image_upload(), image_upload(), image_upload()]})
+        self.response = self.client.get(reverse("publications:card", args=[Publication.objects.get().pk]))
+
+    def test_carousel_is_a_labelled_region(self):
+        self.assertContains(self.response, 'role="region" aria-roledescription="carrousel" aria-label="3 images de la publication"')
+        self.assertContains(self.response, 'data-carousel-status aria-live="polite"')
+
+    def test_slide_names_keep_image_description(self):
+        self.assertContains(self.response, '<span class="sr-only">Image 2 sur 3 : </span>')
+        self.assertNotContains(self.response, 'aria-label="Image 2 sur 3"')  # ne doit pas masquer le texte alternatif
+
+    def test_only_first_slide_reachable_with_tab(self):
+        self.assertEqual(self.response.content.decode().count('tabindex="-1"'), 2)
+
+    def test_ai_caption_hidden_when_it_duplicates_alt(self):
+        self.assertEqual(self.response.content.decode().count('class="ai-caption" aria-hidden="true"'), 2)

@@ -297,31 +297,68 @@
     }
   }
 
-  /* ---------- Carrousel d'images ---------- */
+  /* ---------- Carrousel d'images : souris, doigt, clavier (← →) et lecteur d'écran ---------- */
   function initCarousel(carousel) {
     if (carousel.dataset.ready) return;
     carousel.dataset.ready = "1";
     const track = $("[data-carousel-track]", carousel);
     const counter = $("[data-carousel-count]", carousel);
+    const status = $("[data-carousel-status]", carousel);
     const prev = $("[data-carousel-prev]", carousel);
     const next = $("[data-carousel-next]", carousel);
-    const total = track.children.length;
+    const slides = Array.from(track.children);
+    const total = slides.length;
     const current = () => Math.round(track.scrollLeft / track.clientWidth);
+    let target = 0; // image demandée (le défilement doux met un moment à l'atteindre)
+    let shown = 0;
+    let settleTimer = null;
+
     const update = () => {
       const index = current();
+      const focused = document.activeElement;
       if (counter) counter.textContent = `${index + 1}/${total}`;
       if (prev) prev.disabled = index === 0;
       if (next) next.disabled = index >= total - 1;
+      // Un bouton désactivé perd le focus : on le donne à l'autre bouton.
+      if (focused === prev && prev.disabled) next.focus();
+      if (focused === next && next.disabled) prev.focus();
+      // Seule l'image visible est atteignable avec Tab ; les autres se parcourent avec les flèches.
+      slides.forEach((slide, position) => {
+        if (position === index) slide.removeAttribute("tabindex");
+        else if (slide !== document.activeElement) slide.setAttribute("tabindex", "-1");
+      });
+      if (index !== shown) {
+        shown = index;
+        // Annoncée par le lecteur d'écran, sauf si le focus est déjà sur l'image (son nom est alors lu).
+        if (status && !track.contains(document.activeElement)) status.textContent = `Image ${index + 1} sur ${total}`;
+      }
     };
-    const go = (step) => {
-      const slide = track.children[Math.min(Math.max(current() + step, 0), total - 1)];
+
+    const go = (step, moveFocus = false) => {
+      target = Math.min(Math.max(target + step, 0), total - 1);
+      const slide = slides[target];
+      if (moveFocus) {
+        slide.removeAttribute("tabindex");
+        slide.focus({ preventScroll: true });
+      }
       track.scrollTo({ left: slide.offsetLeft - track.offsetLeft });
     };
+
     if (prev) prev.addEventListener("click", () => go(-1));
     if (next) next.addEventListener("click", () => go(1));
-    track.addEventListener("scroll", () => window.requestAnimationFrame(update), { passive: true });
+    carousel.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      go(event.key === "ArrowRight" ? 1 : -1, track.contains(document.activeElement));
+    });
+    track.addEventListener("scroll", () => {
+      window.requestAnimationFrame(update);
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => { target = current(); }, 150); // après un glissement au doigt
+    }, { passive: true });
     update();
   }
+
 
   /* ---------- Composer : enregistrement audio dans le navigateur ---------- */
   function initRecorder(tile) {
