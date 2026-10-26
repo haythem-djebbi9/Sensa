@@ -97,7 +97,10 @@ def clear_searches(request):
 
 @login_required
 def tag(request, name):
-    name = slug_tag(name)
+    name = slug_tag(name).strip()
+    if not name:
+        from django.shortcuts import redirect
+        return redirect("feed:search")
     tag_obj = Tag.objects.filter(name=name).first()
     posts = services.cards(request.user).filter(tags__name=name).order_by("-created_at") if tag_obj else []
     page = Paginator(posts, settings.SENSA_FEED_PAGE_SIZE).get_page(request.GET.get("page"))

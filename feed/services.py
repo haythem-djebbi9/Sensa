@@ -1,5 +1,6 @@
 """Fil chronologique, recherche plein texte / sémantique et recommandations (module 5)."""
 
+import re
 from datetime import timedelta
 
 from django.db import connection
@@ -232,6 +233,7 @@ def semantic_search(user, query, kind="tout", limit=30):
 
 
 def hashtag_search(user, tag_name, kind="tout"):
+    tag_name = slug_tag(tag_name)
     posts = list(_filter_kind(cards(user), kind).filter(tags__name=tag_name).order_by("-created_at")[:50])
     for post in posts:
         post.match = f"Tag #{tag_name}"
@@ -242,12 +244,18 @@ def hashtag_search(user, tag_name, kind="tout"):
 def search(user, query, kind="tout", mode="mots"):
     """Renvoie (résultats, mode réellement utilisé, message d'information)."""
     query = (query or "").strip()[:200]
-    if not query:
-        return [], mode, ""
     notice = ""
+    # Nettoyage : ignorer les requêtes ne contenant que des symboles
+    cleaned = re.sub(r"[#\s\.,;:!?«»\"'()\-_/\\]+", " ", query).strip()
+    if not cleaned:
+        return [], mode, ""
+    # Si la requête est majoritairement des hashtags, normaliser
     if query.startswith("#") and len(query) > 1:
+        slug = slug_tag(query)
+        if not slug:
+            return [], mode, ""
         mode = Recherche.Mode.HASHTAG
-        results = hashtag_search(user, slug_tag(query), kind)
+        results = hashtag_search(user, slug, kind)
     elif mode == Recherche.Mode.SEMANTIC:
         results = semantic_search(user, query, kind)
     else:
