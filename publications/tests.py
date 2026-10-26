@@ -859,3 +859,18 @@ class DraftTests(SensaTestCase):
         self.assertEqual(response.status_code, 429)
         first.refresh_from_db()
         self.assertEqual(first.status, Publication.Status.DRAFT)
+
+    def test_delete_draft(self):
+        _, draft = self.save_draft()
+        edit_page = self.client.get(reverse("publications:edit", args=[draft.pk]))
+        delete_url = reverse("publications:delete", args=[draft.pk])
+        self.assertContains(edit_page, f'href="{delete_url}"')
+        self.assertContains(self.client.get(delete_url), "Supprimer définitivement ce brouillon ?")
+        response = self.client.post(delete_url, {"next": "/@lina/?onglet=brouillons"})
+        self.assertRedirects(response, "/@lina/?onglet=brouillons")
+        self.assertFalse(Publication.objects.filter(pk=draft.pk).exists())
+
+    def test_only_author_deletes_draft(self):
+        _, draft = self.save_draft()
+        self.client.force_login(make_member("noah"))
+        self.assertEqual(self.client.post(reverse("publications:delete", args=[draft.pk])).status_code, 403)

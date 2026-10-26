@@ -787,3 +787,5 @@ td .preview a:hover { color: var(--color-sensa); }
   *, ::before, ::after { animation: none !important; transition: none !important; }
 }
 .regenerate-form { margin-top: 0.5rem; }
+.btn-danger-text { color: #bd3142; }
+.composer-actions .action-start { margin-right: auto; }

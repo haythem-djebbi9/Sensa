@@ -144,11 +144,12 @@ def delete(request, pk):
     publication = get_object_or_404(Publication.objects.select_related("author"), pk=pk)
     if not publication.can_delete(request.user):
         raise PermissionDenied("Vous ne pouvez pas supprimer cette publication.")
+    after = drafts_url(request.user) if publication.is_draft else reverse("feed:home")
     if request.method == "POST":
         publication.delete()
-        messages.success(request, "Publication supprimée.")
-        return redirect(safe_next(request, reverse("feed:home")))
-    return render(request, "publications/confirm_delete.html", {"post": publication})
+        messages.success(request, "Brouillon supprimé." if publication.is_draft else "Publication supprimée.")
+        return redirect(safe_next(request, after))
+    return render(request, "publications/confirm_delete.html", {"post": publication, "after": after})
 
 
 @login_required
