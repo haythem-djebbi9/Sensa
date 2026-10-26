@@ -308,6 +308,19 @@ class CommentModerationTests(SensaTestCase):
         self.assertEqual(TONE_PRIORITY["aggressive"], Notification.Priority.LOW)
 
 
+class SocialModelLabelTests(SensaTestCase):
+    def test_translation_and_insight_have_readable_labels(self):
+        maya = make_member("maya")
+        post = Publication.objects.create(author=maya, text="Bonjour", status=Publication.Status.READY)
+        comment = Commentaire.objects.create(publication=post, author=maya, text="Merci")
+        translation = CommentTranslation.objects.create(comment=comment, language="en", text="Thanks")
+        insight = ConversationInsight.objects.create(publication=post, summary="Résumé")
+        self.assertIn("Anglais", str(translation))
+        self.assertIn(str(comment), str(translation))
+        self.assertIn("Synthèse", str(insight))
+        self.assertIn(str(post), str(insight))
+
+
 class WebsocketTests(TestCase):
     def test_anonymous_rejected(self):
         async def scenario():

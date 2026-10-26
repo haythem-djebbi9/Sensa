@@ -84,6 +84,9 @@ class CommentTranslation(models.Model):
             models.UniqueConstraint(fields=["comment", "language"], name="comment_translation_unique")
         ]
 
+    def __str__(self):
+        return f"Traduction {self.get_language_display()} — {self.comment}"
+
 
 class ConversationInsight(models.Model):
     """AI summary and discussion prompts generated for a publication's comments."""
@@ -100,6 +103,9 @@ class ConversationInsight(models.Model):
     class Meta:
         verbose_name = "synthèse de conversation"
         verbose_name_plural = "synthèses de conversation"
+
+    def __str__(self):
+        return f"Synthèse — {self.publication}"
 
 
 class Reaction(models.Model):
