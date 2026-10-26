@@ -294,6 +294,102 @@ class MediaFileDeletionTests(SensaTestCase):
         self.assertTrue(self.storage.exists(self.name))
 
 
+class PublicationModelTests(SensaTestCase):
+    """Tests unitaires des modèles seuls : validation des champs, contraintes et règles métier."""
+
+    def setUp(self):
+        from accounts.models import Membre
+
+        self.lina = make_member("lina")
+        self.noah = make_member("noah")
+        self.camille = make_member("camille", role=Membre.Role.MODERATEUR)
+        self.post = Publication.objects.create(author=self.lina, text="Bonjour", status=Publication.Status.READY)
+
+    # --- Validation des champs ---------------------------------------------------
+
+    def test_new_publication_is_pending_and_public(self):
+        post = Publication.objects.create(author=self.lina, text="Nouveau")
+        self.assertEqual(post.status, Publication.Status.PENDING)
+        self.assertEqual(post.visibility, Publication.Visibility.PUBLIC)
+
+    def test_unknown_status_or_visibility_rejected(self):
+        from django.core.exceptions import ValidationError
+
+        post = Publication(author=self.lina, text="test", status="INCONNU", visibility="SECRET")
+        with self.assertRaises(ValidationError) as error:
+            post.full_clean()
+        self.assertEqual(set(error.exception.error_dict), {"status", "visibility"})
+
+    def test_alt_text_limited_to_300_characters(self):
+        from django.core.exceptions import ValidationError
+
+        image = Image(publication=self.post, alt_text="x" * 301)
+        with self.assertRaises(ValidationError) as error:
+            image.full_clean(exclude=["file"])
+        self.assertIn("alt_text", error.exception.error_dict)
+
+    def test_republication_message_limited_to_200_characters(self):
+        from django.core.exceptions import ValidationError
+
+        repost = Republication(publication=self.post, member=self.noah, message="x" * 201)
+        with self.assertRaises(ValidationError) as error:
+            repost.full_clean()
+        self.assertIn("message", error.exception.error_dict)
+        repost.message = "x" * 200
+        repost.full_clean()
+
+    # --- Contraintes -------------------------------------------------------------
+
+    def test_publication_saved_once_per_member(self):
+        from django.db import IntegrityError
+
+        Enregistrement.objects.create(publication=self.post, member=self.noah)
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            Enregistrement.objects.create(publication=self.post, member=self.noah)
+
+    def test_deleting_publication_deletes_reposts_and_saves(self):
+        Republication.objects.create(publication=self.post, member=self.noah)
+        Enregistrement.objects.create(publication=self.post, member=self.noah)
+        self.post.delete()
+        self.assertFalse(Republication.objects.exists())
+        self.assertFalse(Enregistrement.objects.exists())
+
+    # --- Logique métier ----------------------------------------------------------
+
+    def test_visitor_sees_only_ready_public_posts(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        Publication.objects.create(author=self.lina, text="En analyse", status=Publication.Status.PENDING)
+        Publication.objects.create(author=self.lina, text="Abonnés", status=Publication.Status.READY,
+                                   visibility=Publication.Visibility.FOLLOWERS)
+        self.assertEqual(list(Publication.objects.visible_to(AnonymousUser())), [self.post])
+
+    def test_moderator_sees_hidden_posts_but_not_drafts(self):
+        blocked = Publication.objects.create(author=self.lina, text="Bloquée", status=Publication.Status.BLOCKED)
+        draft = Publication.objects.create(author=self.lina, text="Brouillon", status=Publication.Status.DRAFT)
+        visible = Publication.objects.visible_to(self.camille)
+        self.assertIn(blocked, visible)
+        self.assertNotIn(draft, visible)
+        self.assertFalse(blocked.is_visible_to(self.noah))
+
+    def test_draft_url_opens_editor(self):
+        self.assertEqual(self.post.get_absolute_url(), reverse("publications:detail", args=[self.post.pk]))
+        self.post.status = Publication.Status.DRAFT
+        self.assertEqual(self.post.get_absolute_url(), reverse("publications:edit", args=[self.post.pk]))
+
+    def test_only_author_edits_and_moderator_can_delete(self):
+        self.assertTrue(self.post.can_edit(self.lina))
+        self.assertFalse(self.post.can_edit(self.camille))
+        self.assertTrue(self.post.can_delete(self.camille))
+        self.assertFalse(self.post.can_delete(self.noah))
+
+    def test_excerpt_on_one_line_and_cut_at_90_characters(self):
+        self.post.text = "Première ligne\n" + "a" * 100
+        self.assertNotIn("\n", self.post.excerpt)
+        self.assertEqual(len(self.post.excerpt), 91)
+        self.assertTrue(self.post.excerpt.endswith("…"))
+
+
 class RepublicationRulesTests(SensaTestCase):
     def setUp(self):
         self.lina = make_member("lina")
