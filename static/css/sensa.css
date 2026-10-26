@@ -779,3 +779,4 @@ td .preview a:hover { color: var(--color-sensa); }
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after { animation: none !important; transition: none !important; }
 }
+.regenerate-form { margin-top: 0.5rem; }

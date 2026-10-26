@@ -14,4 +14,5 @@ urlpatterns = [
     path("<uuid:pk>/relancer/", views.retry, name="retry"),
     path("<uuid:pk>/republier/", views.republish_toggle, name="republish_toggle"),
     path("<uuid:pk>/enregistrer/", views.save_toggle, name="save_toggle"),
+    path("<uuid:pk>/images/<int:image_id>/regenerer/", views.regenerate_description, name="regenerate_description"),
 ]

@@ -44,7 +44,7 @@
     {% endif %}
 
     {% for image in post.images.all %}
-      <figure style="margin:0">
+      <figure id="image-{{ image.pk }}" style="margin:0">
         <div class="detail-image"><img src="{{ image.file.url }}" alt="{{ image.alt }}"></div>
         <figcaption class="description-box">
           {% if image.description_ia %}
@@ -58,6 +58,12 @@
             <p>L'IA rédige une description de cette image pour les personnes malvoyantes.</p>
           {% else %}
             <p>Aucune description disponible.</p>
+          {% endif %}
+          {% if user.pk == post.author_id and image.description_ia %}
+            <form method="post" action="{% url 'publications:regenerate_description' post.pk image.pk %}" class="regenerate-form">
+              {% csrf_token %}
+              <button type="submit" class="btn btn-small btn-ghost">{% icon "refresh" 14 %}Régénérer la description</button>
+            </form>
           {% endif %}
         </figcaption>
       </figure>

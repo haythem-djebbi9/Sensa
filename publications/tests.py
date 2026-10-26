@@ -611,7 +611,7 @@ class AltTextSuggestionTests(SensaTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "Ce fichier n'est pas une image valide.")
 
-    @override_settings(SENSA_ALT_SUGGESTIONS_PER_HOUR=2)
+    @override_settings(SENSA_VISION_REQUESTS_PER_HOUR=2)
     def test_rate_limited(self):
         with mock.patch("publications.ai.llm.is_configured", return_value=False):
             statuses = [self.suggest().status_code for _ in range(3)]
@@ -720,3 +720,42 @@ class DescriptionQualityTests(SensaTestCase):
         kwargs = chat.call_args.kwargs
         self.assertEqual(kwargs["temperature"], ai.DESCRIPTION_TEMPERATURE)
         self.assertIn("uniquement en français", kwargs["messages"][0]["content"][0]["text"])
+
+
+class RegenerateDescriptionTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+        self.publish(self.client, {"text": "Photo"}, {"image": image_upload()})
+        self.post = Publication.objects.get()
+        self.image = self.post.images.get()
+        self.url = reverse("publications:regenerate_description", args=[self.post.pk, self.image.pk])
+
+    def regenerate(self):
+        with mock.patch("publications.ai.llm.is_configured", return_value=True), \
+                mock.patch("publications.ai.describe_with_llm", return_value=("Une plage au soleil.", "groq")):
+            return self.client.post(self.url)
+
+    def test_author_gets_new_description(self):
+        response = self.regenerate()
+        self.assertRedirects(response, f"{self.post.get_absolute_url()}#image-{self.image.pk}")
+        self.image.refresh_from_db()
+        self.assertEqual(self.image.description_ia, "Une plage au soleil.")
+        analysis = self.post.analyses.get(type=AnalyseIA.Type.DESCRIPTION)
+        self.assertEqual((analysis.result, analysis.provider), ({"description": "Une plage au soleil."}, "groq"))
+
+    def test_other_member_refused(self):
+        self.client.force_login(make_member("noah"))
+        self.assertEqual(self.regenerate().status_code, 403)
+
+    def test_button_only_for_author(self):
+        self.assertContains(self.client.get(self.post.get_absolute_url()), "Régénérer la description")
+        self.client.force_login(make_member("noah"))
+        self.assertNotContains(self.client.get(self.post.get_absolute_url()), "Régénérer la description")
+
+    @override_settings(SENSA_VISION_REQUESTS_PER_HOUR=1)
+    def test_shares_vision_quota(self):
+        self.regenerate()
+        self.regenerate()
+        response = self.client.get(self.post.get_absolute_url())
+        self.assertContains(response, "Trop de demandes à l&#x27;IA")
