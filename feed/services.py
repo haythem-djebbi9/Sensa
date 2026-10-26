@@ -235,6 +235,11 @@ def semantic_search(user, query, kind="tout", limit=30):
 def hashtag_search(user, tag_name, kind="tout"):
     tag_name = slug_tag(tag_name)
     posts = list(_filter_kind(cards(user), kind).filter(tags__name=tag_name).order_by("-created_at")[:50])
+    # Prefetch tags for display
+    from publications.models import Publication
+    post_ids = [p.pk for p in posts]
+    if post_ids:
+        posts = list(cards(user, Publication.objects.filter(pk__in=post_ids)).order_by("-created_at"))
     for post in posts:
         post.match = f"Tag #{tag_name}"
         post.match_icon = "hash"
