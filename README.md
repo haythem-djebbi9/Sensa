@@ -15,17 +15,22 @@ avec Celery, Django Channels et l'API Groq (Whisper, gpt-oss, Qwen vision).
 ## Fonctionnalités
 
 - **Publier en texte, en image et en voix** : audio enregistré directement dans le navigateur (3 min max),
-  images JPEG/PNG/WebP (10 Mo max), limite anti-spam de 10 posts par heure.
-- **Accessibilité par défaut** : chaque image est décrite, chaque vocal est transcrit (segments horodatés,
-  synchronisés avec le lecteur), export en sous-titres WebVTT/SRT, traduction fr/en/ar, résumé IA.
+  jusqu'à 10 images JPEG/PNG/WebP par publication, affichées en carrousel (10 Mo et 50 mégapixels max
+  par image, données GPS retirées), limite anti-spam de 10 posts par heure. Le texte, les images et
+  l'audio restent modifiables après publication.
+- **Accessibilité par défaut** : chaque image est décrite, et l'IA suggère un texte alternatif à l'auteur
+  avant la publication ; chaque vocal est transcrit (segments horodatés, synchronisés avec le lecteur),
+  export en sous-titres WebVTT/SRT, traduction fr/en/ar, résumé IA.
 - **Publier sans attendre** : la publication prend moins d'une seconde ; l'IA travaille ensuite dans Celery et
   la carte du post se met à jour en temps réel (« Étape 2/6 · Transcription… »).
 - **Communauté sûre** : score de toxicité sur le texte, l'image et l'audio ; mise en revue ou blocage
   automatique selon des seuils réglables ; avertissement « Restons bienveillants » avant un commentaire agressif ;
   signalements et file de modération triée par risque.
-- **Social** : abonnements, j'aime, commentaires analysés par l'IA, notifications instantanées (WebSocket).
+- **Social** : abonnements, j'aime, commentaires analysés par l'IA, republication, enregistrement de
+  publications dans une liste privée, notifications instantanées (WebSocket).
 - **Découverte** : fil chronologique, fil « Pour vous » expliqué (« Proche de … que vous avez aimé »),
-  recherche plein texte jusque dans les transcriptions, recherche par le sens, hashtags et tendances.
+  recherche plein texte jusque dans les transcriptions, recherche par le sens, hashtags et tendances
+  (suggestions quand un hashtag n'a aucun résultat), historique des recherches effaçable.
 - **Back-office** : gestion des comptes et des rôles, seuils IA, santé du système, tableau de bord du pipeline IA
   (taux de réussite, latences, jetons, cache, relances, journal des tentatives).
 
@@ -64,6 +69,9 @@ Le guide d'utilisation complet (33 pages illustrées) est disponible dans
 
 ## Démarrage rapide
 
+Prérequis : **Python 3.10 ou plus récent**. Sous macOS, le `python3` fourni par le système est en
+version 3.9 : installez une version récente avec Homebrew (`brew install python`).
+
 ```bash
 git clone https://github.com/haythem-djebbi9/Sensa.git
 cd Sensa
@@ -99,7 +107,7 @@ instantanée et que la carte du post se met à jour toute seule quand l'analyse 
 | App | Module | Responsable | Modèles | IA (tâche Celery) |
 |---|---|---|---|---|
 | `accounts` | Commun : Auth et Users | toute l'équipe | `Membre`, `Moderateur`, `Administrateur` (héritage par proxy), `Profile` | — |
-| `publications` | 1. Publications | Hiba Chaabani | `Publication`, `Image`, `Audio` | `describe_image(image_id)` → `Image.description_ia` |
+| `publications` | 1. Publications | Hiba Chaabani | `Publication`, `Image`, `Audio`, `Republication`, `Enregistrement` | `describe_image(image_id)` → `Image.description_ia` |
 | `social` | 2. Interactions sociales | Med Nour Romdhani | `Abonnement`, `Commentaire`, `Reaction`, `Notification` | `analyse_tone(comment_id)` → `Commentaire.tone`, `tone_score` |
 | `enrichment` | 3. Enrichissement IA asynchrone | Haythem Djebbi | `AnalyseIA`, `TentativeIA`, `CacheIA`, `PipelineConfig`, `Tag`, `PublicationTag` | `transcribe_audio`, `generate_tags`, `summarize_post`, `translate_transcription` + relances, cache, chien de garde |
 | `moderation` | 4. Modération et back-office | Chedly Rebai | `Signalement`, `ConfigurationIA`, `DecisionModeration` | `score_toxicity(text, image_description, transcription)` |
@@ -119,20 +127,24 @@ Publication (PENDING) ──► description ─► transcription ─► tags ─
 - Relances : `enrichment/runner.py` — 3 tentatives (10 s, 1 min, 5 min ; nombre réglable dans
   `ConfigurationIA.max_retries`), puis `FAILED`. Utilisé par **toutes** les tâches IA.
 - `UNDER_REVIEW` et `BLOCKED` ne sont visibles que par l'auteur et les modérateurs.
+- Une décision de modérateur (blocage) et les signalements en attente priment sur l'IA, y compris
+  lorsque l'auteur modifie sa publication.
 
 ## Besoins fonctionnels couverts (BF-01 → BF-20)
 
 - **Comptes** : inscription avec e-mail de confirmation, connexion par e-mail ou pseudo,
   mot de passe oublié, profil (avatar, bio, centres d'intérêt), rôles Visiteur / Membre /
   Modérateur / Administrateur.
-- **Publication** : texte (2 000 car.), image JPEG/PNG/WebP ≤ 10 Mo, audio ≤ 3 min enregistré
-  **dans le navigateur** (MediaRecorder) ou importé, limite de 10 posts/heure (HTTP 429),
-  modification / suppression, statut de l'analyse visible et rafraîchi automatiquement.
-- **Social** : abonnements, j'aime, commentaires, avertissement *« Restons bienveillants »*
-  avant un commentaire agressif, **notifications temps réel** (Django Channels / WebSocket),
-  priorisées selon le ton.
-- **IA et découverte** : description d'image (alt-text), transcription horodatée et
-  synchronisée avec le lecteur, tags automatiques, fil « Pour vous » **expliqué**
+- **Publication** : texte (2 000 car.), jusqu'à 10 images JPEG/PNG/WebP (≤ 10 Mo et ≤ 50 mégapixels
+  chacune, métadonnées EXIF retirées), audio ≤ 3 min enregistré **dans le navigateur** (MediaRecorder)
+  ou importé, durée mesurée sur le fichier, limite de 10 posts/heure (HTTP 429), modification du texte
+  et des médias, suppression, statut de l'analyse visible et rafraîchi automatiquement.
+- **Social** : abonnements, j'aime, commentaires, republication, publications enregistrées,
+  avertissement *« Restons bienveillants »* avant un commentaire agressif, **notifications temps réel**
+  (Django Channels / WebSocket), priorisées selon le ton.
+- **IA et découverte** : description d'image (alt-text) et suggestion du texte alternatif avant
+  publication, transcription horodatée et synchronisée avec le lecteur, tags automatiques,
+  fil « Pour vous » **expliqué**
   (« Proche de … que vous avez aimé ») avec 1 post sur 5 hors de vos abonnements,
   recherche plein texte (texte, transcriptions, tags, descriptions) et **recherche par le sens**.
 - **Modération** : signalements (masquage auto après 3), file triée par score IA,
@@ -147,7 +159,7 @@ puis bascule sur les replis locaux.
 
 | Tâche | Fournisseur principal (Groq) | Replis |
 |---|---|---|
-| Description d'image (module 1) | `qwen/qwen3.8-27b` (vision) | Claude → BLIP local → description basique |
+| Description d'image et suggestion de texte alternatif (module 1) | `qwen/qwen3.8-27b` (vision) | Claude → BLIP local → description basique |
 | Ton des commentaires (module 2) | `openai/gpt-oss-120b` | Claude → lexique FR/EN |
 | Transcription (module 3) | `whisper-large-v3-turbo` (langue + segments horodatés) | Whisper API OpenAI → faster-whisper / openai-whisper local |
 | Tags, thème, langue (module 3) | `openai/gpt-oss-120b` (JSON par schéma) | Claude → mots-clés locaux |
@@ -211,8 +223,9 @@ Le guide PDF illustré se trouve dans [docs/Guide_utilisation_Sensa.pdf](docs/Gu
 .venv\Scripts\python manage.py test
 ```
 
-90 tests couvrent les six apps : rôles et permissions, validation des fichiers, limite de
-publication, pipeline et relances (3 tentatives → FAILED), seuils de modération,
+150 tests couvrent les six apps : rôles et permissions, validation des fichiers, limite de
+publication, carrousel d'images, modification des médias, republication, publications enregistrées,
+suggestion de texte alternatif, pipeline et relances (3 tentatives → FAILED), seuils de modération,
 signalements, notifications WebSocket, recherche, recommandations et tout le module 3
 (fournisseur Groq simulé, cache, journal des tentatives, chien de garde, sous-titres, traduction, tableau de bord). Les appels aux API
 d'IA sont simulés : aucun test n'utilise le réseau.
