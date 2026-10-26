@@ -501,6 +501,15 @@ fieldset { margin: 0; padding: 0; min-width: 0; }
 .sound-circle { width: 4rem; height: 4rem; display: grid; place-items: center; margin-bottom: 1rem; border-radius: 50%; background: var(--color-corail); color: var(--color-nuit); }
 .sound-tile > span:last-child { margin-top: 0.3rem; color: var(--color-ardoise); font-size: 0.7rem; }
 .sound-tile strong { overflow-wrap: anywhere; }
+/* Onglet Republications : auteur d'origine en haut, message du membre dans une bulle en bas. */
+.tile-repost { position: absolute; z-index: 2; left: 0.6rem; top: 0.6rem; display: flex; align-items: center; gap: 0.3rem; max-width: calc(100% - 4.5rem); padding: 0.28rem 0.5rem; border-radius: 999px; background: rgba(255,255,255,.94); color: var(--color-sensa-dark); font-size: 0.68rem; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 0.1rem 0.4rem rgba(30,27,58,.15); }
+.tile-repost .icon { flex: none; }
+.tile-repost-message { position: absolute; z-index: 2; left: 0.5rem; right: 0.5rem; bottom: 0.5rem; padding: 0.5rem 0.65rem; border-radius: 0.8rem 0.8rem 0.8rem 0.25rem; background: rgba(30,27,58,.82); color: white; font-size: 0.78rem; font-weight: 500; line-height: 1.4; text-align: left; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; backdrop-filter: blur(0.4rem); }
+.has-repost-message .tile-chip:not(.tile-chip-top) { display: none; }
+.quote-tile .tile-repost-message { background: var(--color-lavande); color: var(--color-nuit); }
+.is-repost.quote-tile { padding-top: 2.6rem; }
+.is-repost.quote-tile .quote-mark { margin-top: 0.6rem; }
+.has-repost-message.quote-tile, .has-repost-message.sound-tile { padding-bottom: 3.9rem; }
 .profile-liste { grid-template-columns: minmax(0, 1fr); display: grid; gap: 1.2rem; }
 .empty-state { min-height: 15rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.2rem; padding: 2rem; color: var(--color-ardoise); text-align: center; }
 .empty-state > .icon { color: var(--color-sensa); margin-bottom: 0.5rem; }

@@ -1,0 +1,4 @@
+{% load sensa_tags %}
+{# Vignette d'une republication : auteur d'origine en haut, message du membre dans une bulle en bas. #}
+<span class="tile-repost"><span class="sr-only">Republication d'une publication de </span>{% icon "repeat" 13 %}@{{ post.author.username }}</span>
+{% if post.reposted_message %}<span class="tile-repost-message"><span class="sr-only">Message : </span>{{ post.reposted_message }}</span>{% endif %}

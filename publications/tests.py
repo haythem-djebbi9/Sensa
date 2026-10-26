@@ -372,6 +372,9 @@ class RepublishToggleTests(SensaTestCase):
         response = self.client.get(reverse("accounts:profile", args=["noah"]), {"onglet": "republications", "vue": "liste"})
         self.assertContains(response, "À voir absolument 🔥")
         self.assertContains(response, "Vous avez republié")
+        grid = self.client.get(reverse("accounts:profile", args=["noah"]), {"onglet": "republications"})
+        self.assertContains(grid, "À voir absolument 🔥")
+        self.assertContains(grid, "@lina")
 
     def test_followers_only_post_refused(self):
         from social.models import Abonnement
