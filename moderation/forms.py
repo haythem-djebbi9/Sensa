@@ -16,6 +16,7 @@ class ReportForm(forms.ModelForm):
         labels = {"reason": "Pourquoi signalez-vous ce contenu ?"}
 
 
+
 class ConfigurationIAForm(forms.Form):
     review_percent = forms.IntegerField(
         label="Seuil de mise en revue",
