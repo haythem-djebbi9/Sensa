@@ -7,6 +7,8 @@ from django.db.models import F, Q
 
 
 class Abonnement(models.Model):
+    """Relation de suivi entre deux membres (abonné → suivi)."""
+
     follower = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="following", verbose_name="abonné"
     )
@@ -29,6 +31,8 @@ class Abonnement(models.Model):
 
 
 class Commentaire(models.Model):
+    """Commentaire publié sous une publication, enrichi par l'analyse de ton."""
+
     class Tone(models.TextChoices):
         POSITIVE = "positive", "Positif"
         NEUTRAL = "neutral", "Neutre"
@@ -58,6 +62,8 @@ class Commentaire(models.Model):
 
 
 class Reaction(models.Model):
+    """Réaction d'un membre à une publication (j'aime)."""
+
     class Type(models.TextChoices):
         LIKE = "like", "J'aime"
 
@@ -76,6 +82,8 @@ class Reaction(models.Model):
 
 
 class Notification(models.Model):
+    """Notification destinée à un membre, poussée en temps réel et conservée en historique."""
+
     class Type(models.TextChoices):
         LIKE = "like", "J'aime"
         COMMENT = "comment", "Commentaire"

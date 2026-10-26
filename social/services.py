@@ -7,16 +7,23 @@ from channels.layers import get_channel_layer
 from django.db import transaction
 from django.db.models import Count, Exists, OuterRef
 
-from .models import Notification, Reaction
+from .models import Abonnement, Notification, Reaction
 
 logger = logging.getLogger("sensa")
 
 
 def group_name(user_id):
+    """Nom du groupe Channels d'un destinataire (une connexion WebSocket par membre)."""
     return f"notifications_{user_id}"
 
 
+def unread_count(user_id):
+    """Nombre de notifications non lues d'un membre."""
+    return Notification.objects.filter(recipient_id=user_id, is_read=False).count()
+
+
 def notification_payload(notification):
+    """Charge utile JSON poussée au navigateur : contenu de la notification et compteur non lu."""
     from django.urls import reverse
 
     return {
@@ -25,7 +32,7 @@ def notification_payload(notification):
         "title": notification.title,
         "message": notification.message,
         "url": reverse("social:notification_open", args=[notification.pk]),
-        "unread": Notification.objects.filter(recipient_id=notification.recipient_id, is_read=False).count(),
+        "unread": unread_count(notification.recipient_id),
     }
 
 
@@ -58,6 +65,26 @@ def notify(recipient, notif_type, *, actor=None, publication=None, commentaire=N
     )
     transaction.on_commit(lambda: push_notification(notification))
     return notification
+
+
+def toggle_follow(follower, followed):
+    """Abonne `follower` à `followed`, ou retire l'abonnement ; renvoie True si suivi."""
+    existing = Abonnement.objects.filter(follower=follower, followed=followed)
+    if existing.exists():
+        existing.delete()
+        return False
+    Abonnement.objects.create(follower=follower, followed=followed)
+    return True
+
+
+def toggle_reaction(publication, member):
+    """Ajoute ou retire le « j'aime » d'un membre ; renvoie True si le membre aime désormais."""
+    existing = Reaction.objects.filter(publication=publication, member=member, type=Reaction.Type.LIKE)
+    if existing.exists():
+        existing.delete()
+        return False
+    Reaction.objects.create(publication=publication, member=member, type=Reaction.Type.LIKE)
+    return True
 
 
 def annotate_social(queryset, user):
