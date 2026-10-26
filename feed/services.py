@@ -262,9 +262,15 @@ def search(user, query, kind="tout", mode="mots"):
     return results, mode, notice
 
 
+from django.core.cache import cache
+
 def trending_tags(limit=10, days=7):
+    cache_key = f"feed:trending_tags:{limit}:{days}"
+    cached = cache.get(cache_key)
+    if cached is not None:
+        return cached
     since = timezone.now() - timedelta(days=days)
-    return (
+    result = list(
         Tag.objects.annotate(
             nb=Count(
                 "publications",
@@ -274,6 +280,8 @@ def trending_tags(limit=10, days=7):
         .filter(nb__gt=0)
         .order_by("-nb", "name")[:limit]
     )
+    cache.set(cache_key, result, 300)
+    return result
 
 
 def recent_searches(user, limit=5):

@@ -67,6 +67,7 @@ def search(request):
     if mode not in (Recherche.Mode.KEYWORDS, Recherche.Mode.SEMANTIC):
         mode = Recherche.Mode.KEYWORDS
     results, used_mode, notice = services.search(request.user, query, kind, mode)
+    page = Paginator(results, settings.SENSA_FEED_PAGE_SIZE).get_page(request.GET.get("page"))
     context = {
         "query": query,
         "kind": kind,
@@ -75,10 +76,23 @@ def search(request):
         "used_mode": used_mode,
         "notice": notice,
         "results": results,
+        "page": page,
         "trending": services.trending_tags(),
         "recent": services.recent_searches(request.user) if not query else [],
     }
     return render(request, "feed/search.html", context)
+
+
+from django.contrib import messages
+from django.shortcuts import redirect
+
+
+@login_required
+def clear_searches(request):
+    if request.method == "POST":
+        Recherche.objects.filter(member=request.user).delete()
+        messages.success(request, "Recherches récentes effacées.")
+    return redirect("feed:search")
 
 
 @login_required
