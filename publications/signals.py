@@ -13,6 +13,7 @@ def delete_media_file(sender, instance, **kwargs):
     La suppression attend la validation de la transaction : si elle est annulée,
     l'enregistrement revient et son fichier doit toujours exister.
     """
-    if instance.file:
-        storage, name = instance.file.storage, instance.file.name
-        transaction.on_commit(lambda: storage.delete(name))
+    for field_file in (instance.file, getattr(instance, "display", None)):
+        if field_file:
+            storage, name = field_file.storage, field_file.name
+            transaction.on_commit(lambda storage=storage, name=name: storage.delete(name))

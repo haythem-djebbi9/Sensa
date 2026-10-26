@@ -1,8 +1,11 @@
 """Module 1 — Publications (Hiba Chaabani) : Publication, Image, Audio, Republication, Enregistrement."""
 
+import io
+import os
 import uuid
 
 from django.conf import settings
+from django.core.files.base import ContentFile
 from django.db import models
 from django.db.models import Exists, OuterRef, Q
 from django.urls import reverse
@@ -133,9 +136,29 @@ class Publication(models.Model):
         return text[:90] + ("…" if len(text) > 90 else "")
 
 
+def build_display_version(field_file, max_side=1280):
+    """Version allégée d'une image (WebP, `max_side` pixels au plus), ou None pour une image animée."""
+    from PIL import Image as PILImage
+    from PIL import ImageOps
+
+    with field_file.open("rb") as handle:
+        with PILImage.open(handle) as img:
+            if getattr(img, "n_frames", 1) > 1:
+                return None  # on garde l'original pour ne pas perdre l'animation
+            img = ImageOps.exif_transpose(img)
+            img = img.convert("RGBA" if img.mode in ("RGBA", "LA", "P") else "RGB")
+            img.thumbnail((max_side, max_side))
+            buffer = io.BytesIO()
+            img.save(buffer, format="WEBP", quality=80)
+    stem = os.path.splitext(os.path.basename(field_file.name))[0]
+    return ContentFile(buffer.getvalue(), name=f"{stem}-apercu.webp")
+
+
 class Image(models.Model):
     publication = models.ForeignKey(Publication, on_delete=models.CASCADE, related_name="images")
     file = models.ImageField("fichier", upload_to="publications/images/%Y/%m/")
+    # Version allégée affichée dans le fil et les vignettes ; l'original reste sur la page de détail.
+    display = models.ImageField("version allégée", upload_to="publications/images/%Y/%m/", blank=True, editable=False)
     alt_text = models.CharField("texte alternatif (auteur)", max_length=300, blank=True)
     # Écrit par la tâche IA describe_image (module 1).
     description_ia = models.TextField("description IA", blank=True)
@@ -148,6 +171,18 @@ class Image(models.Model):
 
     def __str__(self):
         return f"Image de {self.publication_id}"
+
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        if self.file and not self.display:
+            display = build_display_version(self.file)
+            if display is not None:
+                self.display.save(display.name, display, save=False)
+                super().save(update_fields=["display"])
+
+    @property
+    def display_url(self):
+        return (self.display or self.file).url
 
     @property
     def alt(self):

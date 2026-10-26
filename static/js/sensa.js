@@ -157,7 +157,7 @@
     update();
   }
 
-  /* ---------- Composer : images (carrousel) ---------- */
+  /* ---------- Composer : images (carrousel) et textes alternatifs ---------- */
   function initImageInput(input) {
     const tile = input.closest(".upload-tile");
     if (!tile) return;
@@ -165,50 +165,63 @@
     const count = $("[data-upload-count]", tile);
     const removeButton = $(".preview-remove", tile);
     const altField = document.getElementById("alt-field");
-    const altInput = altField ? $("input", altField) : null;
-    const hint = altField ? $("[data-alt-hint]", altField) : null;
+    const rows = altField ? $("[data-alt-rows]", altField) : null;
+    const rowTemplate = rows ? $("[data-alt-row]", rows).cloneNode(true) : null;
     const maxFiles = Number(input.dataset.maxFiles) || 10;
-    let suggestion = "";
-    let suggestionRequest = 0;
+    let selection = 0; // change à chaque nouveau choix d'images : les anciennes réponses de l'IA sont ignorées
 
-    function showHint(text) {
-      if (!hint) return;
+    function showHint(row, text) {
+      const hint = $("[data-alt-hint]", row);
       hint.hidden = !text;
       $("[data-alt-hint-text]", hint).textContent = text;
     }
 
-    /* L'IA propose un texte alternatif pour la première image ; l'auteur le relit avant de publier. */
-    async function suggestAltText(file) {
-      const url = altField && altField.dataset.suggestUrl;
-      if (!url || !altInput) return;
-      if (altInput.value && altInput.value !== suggestion) return; // l'auteur a déjà écrit le sien
-      const request = ++suggestionRequest;
+    /* L'IA propose un texte alternatif pour une image ; l'auteur le relit avant de publier. */
+    async function suggestAltText(file, row, current) {
+      const url = altField.dataset.suggestUrl;
+      const field = $("textarea", row);
       const body = new FormData();
       body.append("image", file);
       body.append("csrfmiddlewaretoken", $("input[name=csrfmiddlewaretoken]", input.form).value);
-      showHint("L'IA rédige une description de l'image…");
-      altInput.setAttribute("aria-busy", "true");
+      showHint(row, "L'IA rédige une description de l'image…");
+      field.setAttribute("aria-busy", "true");
       try {
         const response = await fetch(url, { method: "POST", body, headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" });
         const data = await response.json();
-        if (request !== suggestionRequest) return; // une autre image a été choisie entre-temps
+        if (current !== selection) return;
         if (!response.ok) throw new Error(data.error || String(response.status));
-        if (altInput.value && altInput.value !== suggestion) {
-          showHint("");
+        if (field.value) {
+          showHint(row, ""); // l'auteur a commencé à écrire le sien
         } else if (data.approximate) {
-          altInput.value = suggestion = "";
-          altInput.placeholder = data.alt_text;
-          showHint("Description approximative (IA non configurée) : décrivez l'image vous-même.");
+          field.placeholder = data.alt_text;
+          showHint(row, "Description approximative (IA non configurée) : décrivez l'image vous-même.");
         } else {
-          altInput.value = suggestion = data.alt_text;
-          showHint("Suggestion de l'IA : relisez-la et corrigez-la si besoin.");
+          field.value = data.alt_text;
+          showHint(row, "Suggestion de l'IA : relisez-la et corrigez-la si besoin.");
         }
       } catch (error) {
-        if (request === suggestionRequest) showHint("Suggestion indisponible : vous pouvez décrire l'image vous-même.");
+        if (current === selection) showHint(row, "Suggestion indisponible : vous pouvez décrire l'image vous-même.");
       } finally {
-        if (request === suggestionRequest) altInput.removeAttribute("aria-busy");
+        field.removeAttribute("aria-busy");
       }
     }
+
+    /* Une ligne par image : vignette, champ de texte alternatif et suggestion de l'IA. */
+    function buildRows(files) {
+      const current = ++selection;
+      rows.replaceChildren();
+      files.forEach((file, index) => {
+        const row = rowTemplate.cloneNode(true);
+        const thumb = $("[data-alt-thumb]", row);
+        thumb.src = URL.createObjectURL(file);
+        thumb.hidden = false;
+        $("[data-alt-label]", row).textContent = files.length > 1 ? `Image ${index + 1}` : "Texte alternatif";
+        $("textarea", row).value = "";
+        rows.append(row);
+        if (altField.dataset.suggestUrl) suggestAltText(file, row, current);
+      });
+    }
+
     input.addEventListener("change", () => {
       const files = Array.from(input.files || []);
       if (!files.length) return;
@@ -227,10 +240,11 @@
         count.hidden = files.length < 2;
         count.textContent = `${files.length} images`;
       }
-      if (altInput) altInput.placeholder = files.length > 1 ? "Décrivez la première image — l'IA décrit les autres" : "Décrivez l'image — sinon l'IA s'en charge";
       tile.classList.add("has-file");
-      if (altField) altField.hidden = false;
-      suggestAltText(files[0]);
+      if (altField) {
+        altField.hidden = false;
+        buildRows(files);
+      }
     });
     if (removeButton) {
       removeButton.addEventListener("click", (event) => {
@@ -238,10 +252,11 @@
         input.value = "";
         if (count) count.hidden = true;
         tile.classList.remove("has-file");
-        if (altField) altField.hidden = true;
-        suggestionRequest += 1;
-        if (altInput && altInput.value === suggestion) altInput.value = suggestion = "";
-        showHint("");
+        if (altField) {
+          altField.hidden = true;
+          selection += 1;
+          rows.replaceChildren(rowTemplate.cloneNode(true));
+        }
       });
     }
   }

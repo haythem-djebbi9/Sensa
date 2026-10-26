@@ -10,7 +10,7 @@ from core.testing import SensaTestCase, image_upload, make_member, wav_upload
 from enrichment.models import AnalyseIA
 
 from . import ai
-from .models import Enregistrement, Publication, Republication
+from .models import Enregistrement, Image, Publication, Republication
 
 
 def phone_photo_upload():
@@ -73,16 +73,23 @@ class PublishTests(SensaTestCase):
     def test_carousel_of_three_images(self):
         colors = [(200, 40, 40), (40, 200, 40), (40, 40, 200)]
         files = [image_upload(f"photo{index}.png", color=color) for index, color in enumerate(colors)]
-        self.publish(self.client, {"text": "Ma journée en 3 photos", "alt_text": "Le port au matin"}, {"image": files})
+        alt_texts = ["Le port au matin", "", "La plage au coucher du soleil"]
+        self.publish(self.client, {"text": "Ma journée en 3 photos", "alt_text": alt_texts}, {"image": files})
         post = Publication.objects.get()
         images = list(post.images.all())
         self.assertEqual(len(images), 3)
-        self.assertEqual([image.alt_text for image in images], ["Le port au matin", "", ""])
+        self.assertEqual([image.alt_text for image in images], alt_texts)
         self.assertTrue(all(image.description_ia for image in images))
         self.assertEqual(post.analyses.filter(type=AnalyseIA.Type.DESCRIPTION).count(), 3)
         response = self.client.get(reverse("publications:card", args=[post.pk]))
         self.assertContains(response, "data-carousel")
         self.assertContains(response, "1/3")
+
+    def test_too_long_alt_text_rejected(self):
+        response = self.publish(self.client, {"text": "test", "alt_text": ["Court", "x" * 301]},
+                                {"image": [image_upload(), image_upload()]})
+        self.assertContains(response, "Un texte alternatif ne doit pas dépasser 300 caractères.")
+        self.assertFalse(Publication.objects.exists())
 
     @override_settings(SENSA_MAX_IMAGES=2)
     def test_too_many_images_rejected(self):
@@ -552,10 +559,17 @@ class EditMediaTests(SensaTestCase):
         self.assertContains(response, "2 images maximum par publication.")
         self.assertEqual(post.images.count(), 2)
 
-    def test_alt_text_of_first_image_still_editable(self):
-        post = self.create(image=[image_upload()])
-        self.edit(post, {"alt_text": "Le port de Bizerte"})
-        self.assertEqual(post.images.get().alt_text, "Le port de Bizerte")
+    def test_alt_text_editable_for_each_image(self):
+        post = self.create(image=[image_upload(), image_upload()])
+        first, second = post.images.all()
+        self.edit(post, {f"alt_{first.pk}": "Le port de Bizerte", f"alt_{second.pk}": "Le marché du dimanche"})
+        self.assertEqual([image.alt_text for image in post.images.all()], ["Le port de Bizerte", "Le marché du dimanche"])
+
+    def test_edit_page_has_one_alt_field_per_image(self):
+        post = self.create(image=[image_upload(), image_upload(), image_upload()])
+        response = self.client.get(reverse("publications:edit", args=[post.pk]))
+        for image in post.images.all():
+            self.assertContains(response, f'name="alt_{image.pk}"')
 
 
 class AltTextSuggestionTests(SensaTestCase):
@@ -628,3 +642,61 @@ class ShortenTests(SensaTestCase):
 
     def test_cut_after_last_word_without_sentence(self):
         self.assertEqual(ai.shorten("un deux trois quatre cinq six", 16), "un deux trois…")
+
+
+class DisplayVersionTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+
+    def test_large_image_gets_light_version(self):
+        from PIL import Image as PILImage
+
+        self.publish(self.client, {"text": "Panorama"}, {"image": image_upload("panorama.png", size=(3000, 2000))})
+        image = Publication.objects.get().images.get()
+        with image.display.open("rb") as handle, PILImage.open(handle) as img:
+            self.assertEqual(img.format, "WEBP")
+            self.assertEqual(img.size, (1280, 853))
+        with image.file.open("rb") as handle, PILImage.open(handle) as img:
+            self.assertEqual(img.size, (3000, 2000))  # l'original est conservé
+
+    def test_feed_uses_light_version_and_detail_the_original(self):
+        self.publish(self.client, {"text": "Photo"}, {"image": image_upload()})
+        post = Publication.objects.get()
+        image = post.images.get()
+        card = self.client.get(reverse("publications:card", args=[post.pk]))
+        self.assertContains(card, image.display.url)
+        self.assertNotContains(card, image.file.url)
+        self.assertContains(self.client.get(post.get_absolute_url()), image.file.url)
+
+    def test_animated_image_keeps_original(self):
+        from PIL import Image as PILImage
+
+        frames = [PILImage.new("RGB", (40, 30), color) for color in ((255, 0, 0), (0, 0, 255))]
+        buffer = io.BytesIO()
+        frames[0].save(buffer, format="WEBP", save_all=True, append_images=frames[1:])
+        upload = SimpleUploadedFile("anim.webp", buffer.getvalue(), content_type="image/webp")
+        self.publish(self.client, {"text": "Animation"}, {"image": upload})
+        image = Publication.objects.get().images.get()
+        self.assertFalse(image.display)
+        self.assertEqual(image.display_url, image.file.url)
+
+    def test_both_files_deleted_with_image(self):
+        self.publish(self.client, {"text": "Photo"}, {"image": image_upload()})
+        image = Publication.objects.get().images.get()
+        storage, names = image.file.storage, [image.file.name, image.display.name]
+        with self.captureOnCommitCallbacks(execute=True):
+            image.delete()
+        self.assertFalse(any(storage.exists(name) for name in names))
+
+    def test_command_builds_missing_versions(self):
+        from django.core.management import call_command
+
+        post = Publication.objects.create(author=self.lina, text="Ancienne photo")
+        image = post.images.create(file=image_upload())
+        Image.objects.filter(pk=image.pk).update(display="")
+        out = io.StringIO()
+        call_command("build_display_images", stdout=out)
+        image.refresh_from_db()
+        self.assertTrue(image.display)
+        self.assertIn("1 version(s) allégée(s) créée(s).", out.getvalue())

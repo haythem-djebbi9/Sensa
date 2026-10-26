@@ -28,20 +28,19 @@
     <section class="composer-options edit-media" aria-labelledby="media-title">
       <strong id="media-title">Médias</strong>
       {% if form.remove_images %}
-        <fieldset class="edit-thumbs">
-          <legend class="sr-only">Images : cochez celles à retirer</legend>
-          {% for checkbox in form.remove_images %}
-            {% with image=checkbox.data.value.instance %}
-              <label class="edit-thumb">
-                <img src="{{ image.file.url }}" alt="{{ image.alt }}">
-                <span>{{ checkbox.tag }}Retirer</span>
-              </label>
-            {% endwith %}
+        <div class="edit-thumbs">
+          {% for row in form.image_rows %}
+            <div class="edit-thumb">
+              <img src="{{ row.image.display_url }}" alt="{{ row.image.alt }}">
+              <div>
+                {% include "partials/field.html" with field=row.alt %}
+                <label class="edit-check">{{ row.remove.tag }}Retirer cette image</label>
+              </div>
+            </div>
           {% endfor %}
-        </fieldset>
+        </div>
         {{ form.remove_images.errors }}
       {% endif %}
-      {% if form.alt_text %}{% include "partials/field.html" with field=form.alt_text %}{% endif %}
       {% include "partials/field.html" with field=form.new_images %}
       {% with audio=post.audio_or_none %}
         {% if audio %}
