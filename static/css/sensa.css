@@ -266,10 +266,16 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .alt-list legend { margin-bottom: 0.5rem; padding: 0; font-size: 0.82rem; font-weight: 700; }
 .alt-list legend small { color: var(--color-ardoise); font-weight: 400; }
 .alt-list [data-alt-rows] { display: grid; gap: 0.7rem; }
-.alt-row { display: grid; grid-template-columns: auto 1fr; gap: 0.7rem; align-items: start; }
+.alt-row { display: grid; grid-template-columns: auto 1fr auto; gap: 0.7rem; align-items: start; }
+.alt-row-actions { display: grid; gap: 0.25rem; margin-top: 1.4rem; }
+.alt-row-actions .icon-btn { width: 2rem; height: 2rem; }
+.alt-row-actions .icon-btn:disabled { opacity: 0.3; cursor: default; }
+.move-up .icon { transform: rotate(-90deg); }
+.move-down .icon { transform: rotate(90deg); }
 .alt-thumb { width: 3.5rem; height: 3.5rem; margin-top: 1.4rem; border-radius: 0.6rem; object-fit: cover; }
 .alt-hint { display: flex; align-items: center; gap: 0.4rem; margin: 0.4rem 0 0; color: var(--color-ardoise); font-size: 0.74rem; }
 .alt-hint .icon { color: #8a6500; flex: none; }
+.preview-add { position: absolute; right: 0.5rem; bottom: 0.5rem; z-index: 2; display: flex; align-items: center; gap: 0.3rem; padding: 0.3rem 0.6rem; border: 0; border-radius: 999px; background: white; color: var(--color-nuit); font-size: 0.72rem; font-weight: 700; cursor: pointer; box-shadow: 0 0.1rem 0.4rem rgba(30,27,58,.18); }
 .upload-count { position: absolute; left: 0.5rem; bottom: 0.5rem; padding: 0.25rem 0.55rem; border-radius: 999px; background: rgba(30,27,58,.75); color: white; font-size: 0.72rem; font-weight: 700; }
 .preview-remove, .audio-remove { position: absolute; z-index: 2; right: 0.5rem; top: 0.5rem; width: 2rem; height: 2rem; display: grid; place-items: center; border-radius: 50%; background: rgba(30,27,58,.75); color: white; }
 .audio-remove { display: none; }
