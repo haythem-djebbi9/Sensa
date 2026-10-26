@@ -10,7 +10,7 @@ from core.testing import SensaTestCase, image_upload, make_member, wav_upload
 from enrichment.models import AnalyseIA
 
 from . import ai
-from .models import Enregistrement, Publication, Republication
+from .models import Enregistrement, Image, Publication, Republication
 
 
 def phone_photo_upload():
@@ -628,3 +628,61 @@ class ShortenTests(SensaTestCase):
 
     def test_cut_after_last_word_without_sentence(self):
         self.assertEqual(ai.shorten("un deux trois quatre cinq six", 16), "un deux trois…")
+
+
+class DisplayVersionTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+
+    def test_large_image_gets_light_version(self):
+        from PIL import Image as PILImage
+
+        self.publish(self.client, {"text": "Panorama"}, {"image": image_upload("panorama.png", size=(3000, 2000))})
+        image = Publication.objects.get().images.get()
+        with image.display.open("rb") as handle, PILImage.open(handle) as img:
+            self.assertEqual(img.format, "WEBP")
+            self.assertEqual(img.size, (1280, 853))
+        with image.file.open("rb") as handle, PILImage.open(handle) as img:
+            self.assertEqual(img.size, (3000, 2000))  # l'original est conservé
+
+    def test_feed_uses_light_version_and_detail_the_original(self):
+        self.publish(self.client, {"text": "Photo"}, {"image": image_upload()})
+        post = Publication.objects.get()
+        image = post.images.get()
+        card = self.client.get(reverse("publications:card", args=[post.pk]))
+        self.assertContains(card, image.display.url)
+        self.assertNotContains(card, image.file.url)
+        self.assertContains(self.client.get(post.get_absolute_url()), image.file.url)
+
+    def test_animated_image_keeps_original(self):
+        from PIL import Image as PILImage
+
+        frames = [PILImage.new("RGB", (40, 30), color) for color in ((255, 0, 0), (0, 0, 255))]
+        buffer = io.BytesIO()
+        frames[0].save(buffer, format="WEBP", save_all=True, append_images=frames[1:])
+        upload = SimpleUploadedFile("anim.webp", buffer.getvalue(), content_type="image/webp")
+        self.publish(self.client, {"text": "Animation"}, {"image": upload})
+        image = Publication.objects.get().images.get()
+        self.assertFalse(image.display)
+        self.assertEqual(image.display_url, image.file.url)
+
+    def test_both_files_deleted_with_image(self):
+        self.publish(self.client, {"text": "Photo"}, {"image": image_upload()})
+        image = Publication.objects.get().images.get()
+        storage, names = image.file.storage, [image.file.name, image.display.name]
+        with self.captureOnCommitCallbacks(execute=True):
+            image.delete()
+        self.assertFalse(any(storage.exists(name) for name in names))
+
+    def test_command_builds_missing_versions(self):
+        from django.core.management import call_command
+
+        post = Publication.objects.create(author=self.lina, text="Ancienne photo")
+        image = post.images.create(file=image_upload())
+        Image.objects.filter(pk=image.pk).update(display="")
+        out = io.StringIO()
+        call_command("build_display_images", stdout=out)
+        image.refresh_from_db()
+        self.assertTrue(image.display)
+        self.assertIn("1 version(s) allégée(s) créée(s).", out.getvalue())

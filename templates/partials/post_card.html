@@ -44,7 +44,7 @@
       {% if images|length > 1 %}<div class="carousel" data-carousel><div class="carousel-track" data-carousel-track>{% endif %}
       {% for image in images %}
         <a class="media-wrap" href="{{ post.get_absolute_url }}"{% if images|length > 1 %} aria-label="Image {{ forloop.counter }} sur {{ images|length }}"{% endif %}>
-          <img src="{{ image.file.url }}" alt="{{ image.alt }}" loading="lazy">
+          <img src="{{ image.display_url }}" alt="{{ image.alt }}" loading="lazy">
           {% if image.description_ia %}
             <div class="ai-caption">{% icon "spark" 15 %}<span><strong>Description IA</strong> · {{ image.description_ia }}</span></div>
           {% elif post.status == "PENDING" %}

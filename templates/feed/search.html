@@ -45,7 +45,7 @@
         {% with image=post.main_image audio=post.audio_or_none %}
           <a class="card result-card" href="{{ post.get_absolute_url }}">
             {% if image %}
-              <img src="{{ image.file.url }}" alt="{{ image.alt }}" loading="lazy">
+              <img src="{{ image.display_url }}" alt="{{ image.alt }}" loading="lazy">
             {% elif audio %}
               <div class="result-audio-icon">{% icon "headphones" %}</div>
             {% else %}

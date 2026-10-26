@@ -33,7 +33,7 @@
           {% for checkbox in form.remove_images %}
             {% with image=checkbox.data.value.instance %}
               <label class="edit-thumb">
-                <img src="{{ image.file.url }}" alt="{{ image.alt }}">
+                <img src="{{ image.display_url }}" alt="{{ image.alt }}">
                 <span>{{ checkbox.tag }}Retirer</span>
               </label>
             {% endwith %}
