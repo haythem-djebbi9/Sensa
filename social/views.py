@@ -1,6 +1,9 @@
+import logging
+
 from django import forms
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import transaction
 from django.http import JsonResponse
@@ -9,16 +12,21 @@ from django.views.decorators.http import require_POST
 
 from accounts.models import Membre
 from accounts.views import safe_next
+from core.ai import AIError
 from enrichment.dispatch import enqueue
 from publications.models import Publication
 
+from . import ai
 from .ai import quick_tone
-from .models import Abonnement, Commentaire, Notification
+from .models import Abonnement, Commentaire, CommentTranslation, ConversationInsight, Notification
 from .services import notify, toggle_follow, toggle_reaction
 from .tasks import analyse_tone
 
+logger = logging.getLogger("sensa.ai")
+
 
 class CommentForm(forms.Form):
+    parent_id = forms.IntegerField(required=False, widget=forms.HiddenInput)
     text = forms.CharField(
         label="Commentaire",
         max_length=1000,
@@ -73,16 +81,117 @@ def comment_create(request, pk):
     if not form.is_valid():
         return render_detail(request, publication, comment_form=form, status=400)
     text = form.cleaned_data["text"].strip()
+    parent = None
+    if form.cleaned_data["parent_id"]:
+        parent = get_object_or_404(
+            Commentaire.objects.filter(publication=publication),
+            pk=form.cleaned_data["parent_id"],
+        )
     tone, _ = quick_tone(text)
     if tone == "aggressive" and not request.POST.get("confirm"):
         # Avertissement « soyez bienveillant » avant publication.
         return render_detail(request, publication, comment_form=form, be_kind=True)
     with transaction.atomic():
-        comment = Commentaire.objects.create(publication=publication, author=request.user, text=text)
-        notify(publication.author, Notification.Type.COMMENT, actor=request.user, publication=publication,
+        comment = Commentaire.objects.create(
+            publication=publication, author=request.user, parent=parent, text=text
+        )
+        recipient = parent.author if parent else publication.author
+        notify(recipient, Notification.Type.COMMENT, actor=request.user, publication=publication,
                commentaire=comment, message=text[:140])
         transaction.on_commit(lambda: enqueue(analyse_tone, [comment.pk]))
     return redirect(f"{publication.get_absolute_url()}#comment-{comment.pk}")
+
+
+@login_required
+@require_POST
+def comment_translate(request, pk, language):
+    if language not in ai.TRANSLATION_LANGUAGES:
+        messages.error(request, "Cette langue de traduction n'est pas prise en charge.")
+        return redirect("feed:home")
+    comment = get_object_or_404(
+        Commentaire.objects.select_related("publication").filter(
+            publication__in=Publication.objects.visible_to(request.user)
+        ),
+        pk=pk,
+    )
+    try:
+        translated, provider = ai.translate_comment(comment.text, language)
+    except AIError as exc:
+        messages.error(request, f"Impossible de traduire le commentaire : {exc}")
+        return redirect(f"{comment.publication.get_absolute_url()}#comment-{comment.pk}")
+    CommentTranslation.objects.update_or_create(
+        comment=comment,
+        language=language,
+        defaults={"text": translated, "provider": provider},
+    )
+    messages.success(request, "Commentaire traduit.")
+    return redirect(f"{comment.publication.get_absolute_url()}#comment-{comment.pk}")
+
+
+@login_required
+@require_POST
+def reply_suggestions(request, pk):
+    comment = get_object_or_404(
+        Commentaire.objects.select_related("publication", "author", "author__profile").filter(
+            publication__in=Publication.objects.visible_to(request.user)
+        ),
+        pk=pk,
+    )
+    if comment.tone == Commentaire.Tone.AGGRESSIVE:
+        return JsonResponse({"error": "Impossible de répondre à ce commentaire."}, status=400)
+    context_comments = list(
+        comment.publication.commentaires.exclude(pk=comment.pk)
+        .exclude(tone=Commentaire.Tone.AGGRESSIVE)
+        .select_related("author", "author__profile")
+        .order_by("-created_at")[:8]
+    )
+    context_comments.reverse()
+    try:
+        suggestions, provider = ai.suggest_replies(
+            comment.publication.text[:2000],
+            comment.text[:1000],
+            [{"author": item.author.display_name, "text": item.text[:500]} for item in context_comments],
+        )
+    except AIError:
+        logger.warning("Impossible de générer des suggestions de réponse.", exc_info=True)
+        return JsonResponse({"error": "Suggestions indisponibles pour le moment."}, status=503)
+    return JsonResponse({"suggestions": suggestions, "provider": provider})
+
+
+@login_required
+@require_POST
+def conversation_insight(request, pk):
+    publication = get_object_or_404(Publication.objects.visible_to(request.user), pk=pk)
+    if publication.author_id != request.user.pk:
+        raise PermissionDenied("Seul l'auteur peut générer les pistes de discussion.")
+    comments = list(
+        publication.commentaires.exclude(tone=Commentaire.Tone.AGGRESSIVE)
+        .select_related("author", "author__profile")
+        .order_by("-created_at")[:30]
+    )
+    if not comments:
+        messages.info(request, "Ajoutez des commentaires avant de générer une synthèse.")
+        return redirect(f"{publication.get_absolute_url()}#commentaires")
+    comments.reverse()
+    try:
+        summary, starters, provider = ai.summarize_conversation(
+            publication.text[:2000],
+            [{"author": comment.author.display_name, "text": comment.text[:500]} for comment in comments],
+        )
+    except ai.AIError as exc:
+        messages.error(request, f"Impossible de générer la synthèse : {exc}")
+        return redirect(f"{publication.get_absolute_url()}#commentaires")
+    ConversationInsight.objects.update_or_create(
+        publication=publication,
+        defaults={
+            "summary": summary,
+            "starters": starters,
+            "source_comment_count": len(comments),
+            "provider": provider,
+        },
+    )
+    messages.success(request, "Synthèse et pistes de discussion générées.")
+    return redirect(f"{publication.get_absolute_url()}#commentaires")
 
 
 @login_required
