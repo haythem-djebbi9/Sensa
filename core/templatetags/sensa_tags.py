@@ -109,6 +109,7 @@ _STATUS_BADGES = {
     "UNDER_REVIEW": ("review", "eye", "En revue"),
     "FAILED": ("failed", "alert", "Analyse IA en échec"),
     "BLOCKED": ("blocked", "shield", "Bloqué"),
+    "DRAFT": ("review", "edit", "Brouillon"),
 }
 
 

@@ -30,7 +30,8 @@ def is_configured():
     return bool(available())
 
 
-def structured(prompt, schema, *, image=None, effort="low", max_tokens=2048):
+def structured(prompt, schema, *, image=None, effort="low", max_tokens=2048, temperature=None):
+    """`temperature` règle la part de hasard des réponses de Groq (ignorée par Claude)."""
     names = available()
     if not names:
         raise AIUnavailable("Aucun fournisseur d'IA n'est configuré (GROQ_API_KEY ou ANTHROPIC_API_KEY).")
@@ -40,7 +41,8 @@ def structured(prompt, schema, *, image=None, effort="low", max_tokens=2048):
             if name == "claude":
                 data = claude.structured(prompt, schema, image=image, effort=effort, max_tokens=max(max_tokens, 4096))
             else:
-                data = groq_provider.structured(prompt, schema, image=image, max_tokens=max_tokens)
+                data = groq_provider.structured(prompt, schema, image=image, max_tokens=max_tokens,
+                                                temperature=temperature)
             if not isinstance(data, dict):
                 raise AIError("Réponse JSON inattendue.")
             return LLMResult(data=data, provider=name)

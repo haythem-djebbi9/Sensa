@@ -25,19 +25,49 @@ from .models import Enregistrement, Image, Publication, Republication
 from .validators import validate_image_upload
 
 
+def vision_quota_exceeded(user):
+    """Chaque appel à l'IA de vision a un coût : limite par membre et par heure."""
+    counter = f"appels-ia-vision:{user.pk}"
+    rate_cache.add(counter, 0, timeout=3600)
+    return rate_cache.incr(counter) > settings.SENSA_VISION_REQUESTS_PER_HOUR
+
+
 def posts_last_hour(user):
-    return Publication.objects.filter(author=user, created_at__gte=timezone.now() - timedelta(hours=1)).count()
+    recent = Publication.objects.filter(author=user, created_at__gte=timezone.now() - timedelta(hours=1))
+    return recent.exclude(status=Publication.Status.DRAFT).count()
+
+
+def rate_limited(request):
+    return render(request, "publications/rate_limited.html", {"limit": settings.SENSA_POSTS_PER_HOUR}, status=429)
+
+
+def drafts_url(user):
+    return reverse("accounts:profile", args=[user.username]) + "?onglet=brouillons"
+
+
+def publish_draft(request, publication):
+    """Publie un brouillon : il prend la date du jour et l'IA l'analyse."""
+    if posts_last_hour(request.user) >= settings.SENSA_POSTS_PER_HOUR:
+        return rate_limited(request)
+    Publication.objects.filter(pk=publication.pk).update(status=Publication.Status.PENDING, created_at=timezone.now())
+    pipeline.launch(Publication.objects.get(pk=publication.pk))
+    messages.success(request, "C'est en ligne ! L'IA enrichit votre publication en arrière-plan.")
+    return redirect("feed:home")
 
 
 @login_required
 def create(request):
-    """Formulaire de publication : texte + image + audio, publié immédiatement (PENDING)."""
+    """Formulaire de publication : texte + images + audio, publié immédiatement (PENDING) ou gardé en brouillon."""
     used = posts_last_hour(request.user)
-    if request.method == "POST" and used >= settings.SENSA_POSTS_PER_HOUR:
-        return render(request, "publications/rate_limited.html", {"limit": settings.SENSA_POSTS_PER_HOUR}, status=429)
+    as_draft = request.POST.get("action") == "draft"
+    if request.method == "POST" and not as_draft and used >= settings.SENSA_POSTS_PER_HOUR:
+        return rate_limited(request)
     form = PublicationForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and form.is_valid():
-        publication = form.save_for(request.user)
+        publication = form.save_for(request.user, draft=as_draft)
+        if as_draft:
+            messages.success(request, "Brouillon enregistré : retrouvez-le dans l'onglet « Brouillons » de votre profil.")
+            return redirect(drafts_url(request.user))
         pipeline.launch(publication)
         messages.success(request, "C'est en ligne ! L'IA enrichit votre publication en arrière-plan.")
         return redirect("feed:home")
@@ -88,6 +118,12 @@ def edit(request, pk):
     if request.method == "POST" and form.is_valid():
         text_changed = "text" in form.changed_data
         form.save()
+        if publication.is_draft:
+            # Pas d'analyse IA avant la publication.
+            if request.POST.get("action") == "publish":
+                return publish_draft(request, publication)
+            messages.success(request, "Brouillon enregistré.")
+            return redirect(publication)
         if form.media_changed:
             # Nouveaux médias : toute l'analyse est refaite (descriptions, transcription, résumé, modération…).
             pipeline.launch(Publication.objects.get(pk=publication.pk))
@@ -99,7 +135,8 @@ def edit(request, pk):
         else:
             messages.success(request, "Publication modifiée.")
         return redirect(publication)
-    return render(request, "publications/edit.html", {"form": form, "post": publication})
+    cancel_url = drafts_url(request.user) if publication.is_draft else publication.get_absolute_url()
+    return render(request, "publications/edit.html", {"form": form, "post": publication, "cancel_url": cancel_url})
 
 
 @login_required
@@ -107,11 +144,12 @@ def delete(request, pk):
     publication = get_object_or_404(Publication.objects.select_related("author"), pk=pk)
     if not publication.can_delete(request.user):
         raise PermissionDenied("Vous ne pouvez pas supprimer cette publication.")
+    after = drafts_url(request.user) if publication.is_draft else reverse("feed:home")
     if request.method == "POST":
         publication.delete()
-        messages.success(request, "Publication supprimée.")
-        return redirect(safe_next(request, reverse("feed:home")))
-    return render(request, "publications/confirm_delete.html", {"post": publication})
+        messages.success(request, "Brouillon supprimé." if publication.is_draft else "Publication supprimée.")
+        return redirect(safe_next(request, after))
+    return render(request, "publications/confirm_delete.html", {"post": publication, "after": after})
 
 
 @login_required
@@ -177,9 +215,7 @@ def suggest_alt_text(request):
     upload = request.FILES.get("image")
     if upload is None:
         return JsonResponse({"error": "Aucune image reçue."}, status=400)
-    counter = f"suggestions-texte-alternatif:{request.user.pk}"
-    rate_cache.add(counter, 0, timeout=3600)
-    if rate_cache.incr(counter) > settings.SENSA_ALT_SUGGESTIONS_PER_HOUR:
+    if vision_quota_exceeded(request.user):
         return JsonResponse({"error": "Trop de suggestions demandées : réessayez dans une heure."}, status=429)
     try:
         validate_image_upload(upload)
@@ -198,3 +234,31 @@ def suggest_alt_text(request):
             cache.store(key, AnalyseIA.Type.DESCRIPTION, {"description": description}, provider)
     alt_text = ai.shorten(description, Image._meta.get_field("alt_text").max_length)
     return JsonResponse({"alt_text": alt_text, "approximate": provider == "description-basique"})
+
+
+@login_required
+@require_POST
+def regenerate_description(request, pk, image_id):
+    """Redemande à l'IA la description d'une image, sans réutiliser le cache (auteur uniquement)."""
+    publication = get_object_or_404(Publication, pk=pk)
+    if not publication.can_edit(request.user):
+        raise PermissionDenied("Seul l'auteur peut régénérer la description.")
+    image = get_object_or_404(publication.images, pk=image_id)
+    back = f"{publication.get_absolute_url()}#image-{image.pk}"
+    if vision_quota_exceeded(request.user):
+        messages.error(request, "Trop de demandes à l'IA : réessayez dans une heure.")
+        return redirect(back)
+    with image.file.open("rb") as handle:
+        description, provider = ai.describe_image_data(handle.read())
+    image.description_ia = description
+    image.save(update_fields=["description_ia"])
+    AnalyseIA.objects.filter(publication=publication, type=AnalyseIA.Type.DESCRIPTION, target_id=str(image.pk)).update(
+        result={"description": description}, provider=provider
+    )
+    if provider == "description-basique":
+        messages.info(request, "L'IA de vision n'est pas configurée : la description reste approximative.")
+    else:
+        cache.store(cache.make_key(AnalyseIA.Type.DESCRIPTION, image.file), AnalyseIA.Type.DESCRIPTION,
+                    {"description": description}, provider)
+        messages.success(request, "Nouvelle description générée.")
+    return redirect(back)

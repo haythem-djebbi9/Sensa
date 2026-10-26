@@ -41,12 +41,15 @@
       <a href="?onglet=republications&amp;vue={{ view }}" class="{% if tab == 'republications' %}tab-active{% endif %}"{% if tab == 'republications' %} aria-current="page"{% endif %}>{% icon "repeat" 16 %}Republications · {{ republications_count }}</a>
       {% if is_me %}
         <a href="?onglet=enregistres&amp;vue={{ view }}" class="{% if tab == 'enregistres' %}tab-active{% endif %}"{% if tab == 'enregistres' %} aria-current="page"{% endif %}>{% icon "bookmark" 16 %}Enregistrés</a>
+        <a href="?onglet=brouillons" class="{% if tab == 'brouillons' %}tab-active{% endif %}"{% if tab == 'brouillons' %} aria-current="page"{% endif %}>{% icon "edit" 16 %}Brouillons · {{ drafts_count }}</a>
       {% endif %}
     </nav>
-    <div>
-      <a class="icon-btn{% if view == 'grille' %} icon-btn-active{% endif %}" href="?onglet={{ tab }}&amp;vue=grille" aria-label="Vue en grille"{% if view == 'grille' %} aria-current="true"{% endif %}>{% icon "grid" %}</a>
-      <a class="icon-btn{% if view == 'liste' %} icon-btn-active{% endif %}" href="?onglet={{ tab }}&amp;vue=liste" aria-label="Vue en liste"{% if view == 'liste' %} aria-current="true"{% endif %}>{% icon "list" %}</a>
-    </div>
+    {% if tab != "brouillons" %}
+      <div>
+        <a class="icon-btn{% if view == 'grille' %} icon-btn-active{% endif %}" href="?onglet={{ tab }}&amp;vue=grille" aria-label="Vue en grille"{% if view == 'grille' %} aria-current="true"{% endif %}>{% icon "grid" %}</a>
+        <a class="icon-btn{% if view == 'liste' %} icon-btn-active{% endif %}" href="?onglet={{ tab }}&amp;vue=liste" aria-label="Vue en liste"{% if view == 'liste' %} aria-current="true"{% endif %}>{% icon "list" %}</a>
+      </div>
+    {% endif %}
   </div>
 
   {% if view == "liste" %}

@@ -67,7 +67,7 @@ def _extract_json(text):
         raise AIError("Réponse JSON invalide de Groq.") from exc
 
 
-def structured(prompt, schema, *, image=None, max_tokens=2048, system=None):
+def structured(prompt, schema, *, image=None, max_tokens=2048, system=None, temperature=None):
     """Appel chat → dict JSON conforme à `schema`. `image` = (octets, type MIME)."""
     if not is_configured():
         raise AIUnavailable("GROQ_API_KEY n'est pas configurée.")
@@ -88,6 +88,8 @@ def structured(prompt, schema, *, image=None, max_tokens=2048, system=None):
         kwargs["reasoning_effort"] = "low"
     elif image is None:
         kwargs["response_format"] = {"type": "json_object"}
+    if temperature is not None and not reasoning:
+        kwargs["temperature"] = temperature
 
     started = time.monotonic()
     response = _wrap_errors(lambda: get_client().chat.completions.create(**kwargs))

@@ -16,9 +16,15 @@ logger = logging.getLogger("sensa.ai")
 
 DESCRIPTION_PROMPT = (
     "Tu rédiges le texte alternatif d'une image publiée sur un réseau social, pour une personne malvoyante.\n"
-    "Décris l'image en français, en 1 à 3 phrases factuelles : sujet principal, action, lieu, ambiance.\n"
-    "Si un texte est lisible dans l'image, cite-le. N'invente rien, ne commence pas par « Cette image »."
+    "Décris l'image en 1 à 3 phrases courtes et factuelles : sujet principal, action, lieu, ambiance.\n"
+    "Écris uniquement en français correct, sans aucun mot d'une autre langue ; seul le texte lisible "
+    "dans l'image est cité tel quel, entre guillemets.\n"
+    "Décris seulement ce qui est visible : n'identifie pas un lieu, un drapeau ou une personne sans certitude, "
+    "et ne précise le type d'image (photo, dessin, schéma) que s'il est évident.\n"
+    "Ne commence pas par « Cette image » ni par « L'image »."
 )
+# Peu de hasard : des descriptions fidèles et régulières plutôt que créatives.
+DESCRIPTION_TEMPERATURE = 0.2
 DESCRIPTION_SCHEMA = {
     "type": "object",
     "properties": {"description": {"type": "string"}},
@@ -41,7 +47,8 @@ def prepare_image(data, max_side=1568):
 
 
 def describe_with_llm(data):
-    result = llm.structured(DESCRIPTION_PROMPT, DESCRIPTION_SCHEMA, image=prepare_image(data), max_tokens=1024)
+    result = llm.structured(DESCRIPTION_PROMPT, DESCRIPTION_SCHEMA, image=prepare_image(data), max_tokens=1024,
+                            temperature=DESCRIPTION_TEMPERATURE)
     description = (result.data.get("description") or "").strip()
     if not description:
         raise AIError("Description vide.")

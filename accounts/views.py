@@ -91,9 +91,10 @@ def profile(request, username):
     member_reposts = Republication.objects.filter(member=member)
     reposted = visible.filter(pk__in=member_reposts.values("publication_id"))
     is_me = member == request.user
+    drafts = Publication.objects.filter(author=member, status=Publication.Status.DRAFT)
     tab = request.GET.get("onglet")
-    if tab not in ("republications", "enregistres") or (tab == "enregistres" and not is_me):
-        tab = "publications"  # les enregistrements sont privés
+    if tab not in ("republications", "enregistres", "brouillons") or (tab in ("enregistres", "brouillons") and not is_me):
+        tab = "publications"  # les enregistrements et les brouillons sont privés
     if tab == "republications":
         reposted_at = member_reposts.filter(publication=OuterRef("pk")).values("created_at")[:1]
         posts = annotate_social(reposted.for_cards(), request.user).annotate(reposted_at=Subquery(reposted_at))
@@ -104,9 +105,12 @@ def profile(request, username):
         saved = visible.filter(pk__in=my_saves.values("publication_id"))
         posts = annotate_social(saved.for_cards(), request.user).annotate(saved_at=Subquery(saved_at))
         posts = posts.order_by("-saved_at")
+    elif tab == "brouillons":
+        posts = annotate_social(drafts.for_cards(), request.user).order_by("-updated_at")
     else:
         posts = annotate_social(own_posts.for_cards(), request.user)
-    view = "liste" if request.GET.get("vue") == "liste" else "grille"
+    # Un brouillon s'ouvre pour être terminé : il n'a pas de carte publique, seulement une vignette.
+    view = "liste" if request.GET.get("vue") == "liste" and tab != "brouillons" else "grille"
     context = {
         "member": member,
         "posts": posts[:60],
@@ -114,6 +118,7 @@ def profile(request, username):
         "view": view,
         "posts_count": own_posts.count(),
         "republications_count": reposted.count(),
+        "drafts_count": drafts.count() if is_me else 0,
         "followers_count": Abonnement.objects.filter(followed=member).count(),
         "following_count": Abonnement.objects.filter(follower=member).count(),
         "is_following": Abonnement.objects.filter(follower=request.user, followed=member).exists(),

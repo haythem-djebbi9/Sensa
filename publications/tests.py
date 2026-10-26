@@ -611,7 +611,7 @@ class AltTextSuggestionTests(SensaTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertEqual(response.json()["error"], "Ce fichier n'est pas une image valide.")
 
-    @override_settings(SENSA_ALT_SUGGESTIONS_PER_HOUR=2)
+    @override_settings(SENSA_VISION_REQUESTS_PER_HOUR=2)
     def test_rate_limited(self):
         with mock.patch("publications.ai.llm.is_configured", return_value=False):
             statuses = [self.suggest().status_code for _ in range(3)]
@@ -700,3 +700,194 @@ class DisplayVersionTests(SensaTestCase):
         image.refresh_from_db()
         self.assertTrue(image.display)
         self.assertIn("1 version(s) allégée(s) créée(s).", out.getvalue())
+
+
+class DescriptionQualityTests(SensaTestCase):
+    @override_settings(GROQ_API_KEY="gsk-test", SENSA_GROQ_VISION_MODEL="qwen/qwen3.8-27b", SENSA_AI_PROVIDERS=["groq"])
+    def test_vision_call_uses_low_temperature_and_french_only_prompt(self):
+        from types import SimpleNamespace
+
+        from core.ai import groq_provider
+
+        chat = mock.Mock(return_value=SimpleNamespace(
+            choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(content='{"description": "Un port."}'))],
+            usage=None,
+        ))
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=chat)))
+        with mock.patch.object(groq_provider, "get_client", return_value=client):
+            description, provider = ai.describe_with_llm(image_upload().read())
+        self.assertEqual((description, provider), ("Un port.", "groq"))
+        kwargs = chat.call_args.kwargs
+        self.assertEqual(kwargs["temperature"], ai.DESCRIPTION_TEMPERATURE)
+        self.assertIn("uniquement en français", kwargs["messages"][0]["content"][0]["text"])
+
+
+class RegenerateDescriptionTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+        self.publish(self.client, {"text": "Photo"}, {"image": image_upload()})
+        self.post = Publication.objects.get()
+        self.image = self.post.images.get()
+        self.url = reverse("publications:regenerate_description", args=[self.post.pk, self.image.pk])
+
+    def regenerate(self):
+        with mock.patch("publications.ai.llm.is_configured", return_value=True), \
+                mock.patch("publications.ai.describe_with_llm", return_value=("Une plage au soleil.", "groq")):
+            return self.client.post(self.url)
+
+    def test_author_gets_new_description(self):
+        response = self.regenerate()
+        self.assertRedirects(response, f"{self.post.get_absolute_url()}#image-{self.image.pk}")
+        self.image.refresh_from_db()
+        self.assertEqual(self.image.description_ia, "Une plage au soleil.")
+        analysis = self.post.analyses.get(type=AnalyseIA.Type.DESCRIPTION)
+        self.assertEqual((analysis.result, analysis.provider), ({"description": "Une plage au soleil."}, "groq"))
+
+    def test_other_member_refused(self):
+        self.client.force_login(make_member("noah"))
+        self.assertEqual(self.regenerate().status_code, 403)
+
+    def test_button_only_for_author(self):
+        self.assertContains(self.client.get(self.post.get_absolute_url()), "Régénérer la description")
+        self.client.force_login(make_member("noah"))
+        self.assertNotContains(self.client.get(self.post.get_absolute_url()), "Régénérer la description")
+
+    @override_settings(SENSA_VISION_REQUESTS_PER_HOUR=1)
+    def test_shares_vision_quota(self):
+        self.regenerate()
+        self.regenerate()
+        response = self.client.get(self.post.get_absolute_url())
+        self.assertContains(response, "Trop de demandes à l&#x27;IA")
+
+
+class CarouselAccessibilityTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+        self.publish(self.client, {"text": "Trois photos", "alt_text": ["Le port", "", ""]},
+                     {"image": [image_upload(), image_upload(), image_upload()]})
+        self.response = self.client.get(reverse("publications:card", args=[Publication.objects.get().pk]))
+
+    def test_carousel_is_a_labelled_region(self):
+        self.assertContains(self.response, 'role="region" aria-roledescription="carrousel" aria-label="3 images de la publication"')
+        self.assertContains(self.response, 'data-carousel-status aria-live="polite"')
+
+    def test_slide_names_keep_image_description(self):
+        self.assertContains(self.response, '<span class="sr-only">Image 2 sur 3 : </span>')
+        self.assertNotContains(self.response, 'aria-label="Image 2 sur 3"')  # ne doit pas masquer le texte alternatif
+
+    def test_only_first_slide_reachable_with_tab(self):
+        self.assertEqual(self.response.content.decode().count('tabindex="-1"'), 2)
+
+    def test_ai_caption_hidden_when_it_duplicates_alt(self):
+        self.assertEqual(self.response.content.decode().count('class="ai-caption" aria-hidden="true"'), 2)
+
+
+class DraftTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+
+    def save_draft(self, text="Idée à terminer #brouillon", files=None):
+        payload = {"text": text, "visibility": "PUBLIC", "action": "draft", **(files or {})}
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("publications:create"), payload)
+        return response, Publication.objects.get(text=text)
+
+    def test_draft_saved_without_ai_analysis(self):
+        response, draft = self.save_draft(files={"image": image_upload()})
+        self.assertRedirects(response, "/@lina/?onglet=brouillons")
+        self.assertEqual(draft.status, Publication.Status.DRAFT)
+        self.assertFalse(draft.analyses.exists())
+        self.assertEqual(draft.get_absolute_url(), reverse("publications:edit", args=[draft.pk]))
+
+    def test_draft_visible_nowhere(self):
+        from accounts.models import Membre
+        from social.models import Abonnement
+
+        _, draft = self.save_draft()
+        noah = make_member("noah")
+        Abonnement.objects.create(follower=noah, followed=self.lina)
+        for user in (self.lina, noah, make_member("camille", role=Membre.Role.MODERATEUR)):
+            self.assertFalse(Publication.objects.visible_to(user).filter(pk=draft.pk).exists())
+        self.assertNotContains(self.client.get(reverse("feed:home")), "Idée à terminer")
+        self.assertEqual(self.client.get(reverse("publications:detail", args=[draft.pk])).status_code, 404)
+
+    def test_drafts_tab_private(self):
+        _, draft = self.save_draft()
+        response = self.client.get(reverse("accounts:profile", args=["lina"]), {"onglet": "brouillons"})
+        self.assertEqual(list(response.context["posts"]), [draft])
+        self.assertContains(response, "Brouillons · 1")
+        self.client.force_login(make_member("noah"))
+        response = self.client.get(reverse("accounts:profile", args=["lina"]), {"onglet": "brouillons"})
+        self.assertEqual(response.context["tab"], "publications")
+        self.assertNotContains(response, "Brouillons")
+
+    def test_editing_draft_does_not_publish(self):
+        _, draft = self.save_draft()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("publications:edit", args=[draft.pk]), {"text": "Texte retravaillé", "visibility": "PUBLIC"})
+        draft.refresh_from_db()
+        self.assertEqual((draft.text, draft.status), ("Texte retravaillé", Publication.Status.DRAFT))
+        self.assertFalse(draft.analyses.exists())
+
+    def test_publish_draft(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        _, draft = self.save_draft()
+        Publication.objects.filter(pk=draft.pk).update(created_at=timezone.now() - timedelta(days=3))
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("publications:edit", args=[draft.pk]),
+                                        {"text": draft.text, "visibility": "PUBLIC", "action": "publish"})
+        self.assertRedirects(response, reverse("feed:home"))
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, Publication.Status.READY)
+        self.assertGreater(draft.created_at, timezone.now() - timedelta(minutes=1))
+        self.assertTrue(draft.analyses.exists())
+        self.assertContains(self.client.get(reverse("feed:home")), "Idée à terminer")
+
+    @override_settings(SENSA_POSTS_PER_HOUR=1)
+    def test_drafts_do_not_count_but_publishing_does(self):
+        _, first = self.save_draft("Brouillon un")
+        self.save_draft("Brouillon deux")
+        self.publish(self.client, {"text": "Publication directe"})
+        response = self.client.post(reverse("publications:edit", args=[first.pk]),
+                                    {"text": first.text, "visibility": "PUBLIC", "action": "publish"})
+        self.assertEqual(response.status_code, 429)
+        first.refresh_from_db()
+        self.assertEqual(first.status, Publication.Status.DRAFT)
+
+    def test_delete_draft(self):
+        _, draft = self.save_draft()
+        edit_page = self.client.get(reverse("publications:edit", args=[draft.pk]))
+        delete_url = reverse("publications:delete", args=[draft.pk])
+        self.assertContains(edit_page, f'href="{delete_url}"')
+        self.assertContains(self.client.get(delete_url), "Supprimer définitivement ce brouillon ?")
+        response = self.client.post(delete_url, {"next": "/@lina/?onglet=brouillons"})
+        self.assertRedirects(response, "/@lina/?onglet=brouillons")
+        self.assertFalse(Publication.objects.filter(pk=draft.pk).exists())
+
+    def test_only_author_deletes_draft(self):
+        _, draft = self.save_draft()
+        self.client.force_login(make_member("noah"))
+        self.assertEqual(self.client.post(reverse("publications:delete", args=[draft.pk])).status_code, 403)
+
+
+class AspectRatioTests(SensaTestCase):
+    def test_ratio_kept_within_instagram_limits(self):
+        cases = {(900, 1200): "0.8000", (1080, 1350): "0.8000", (1600, 900): "1.7778", (4000, 1000): "1.9100"}
+        for (width, height), expected in cases.items():
+            self.assertEqual(Image(width=width, height=height).aspect_ratio, expected)
+        self.assertEqual(Image().aspect_ratio, "4 / 3")
+
+    def test_dimensions_saved_and_used_by_card(self):
+        lina = make_member("lina")
+        self.client.force_login(lina)
+        self.publish(self.client, {"text": "Portrait"}, {"image": image_upload("portrait.png", size=(300, 400))})
+        post = Publication.objects.get()
+        image = post.images.get()
+        self.assertEqual((image.width, image.height), (300, 400))
+        self.assertContains(self.client.get(reverse("publications:card", args=[post.pk])), 'style="--ratio: 0.8000"')

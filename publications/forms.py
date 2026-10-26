@@ -130,10 +130,10 @@ class PublicationForm(forms.ModelForm):
         return cleaned
 
     @transaction.atomic
-    def save_for(self, author):
+    def save_for(self, author, *, draft=False):
         publication = super().save(commit=False)
         publication.author = author
-        publication.status = Publication.Status.PENDING
+        publication.status = Publication.Status.DRAFT if draft else Publication.Status.PENDING
         publication.save()
         alt_texts = self.cleaned_data.get("alt_text") or []
         for position, image in enumerate(self.cleaned_data.get("image") or []):

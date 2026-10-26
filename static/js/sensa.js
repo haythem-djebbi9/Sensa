@@ -164,11 +164,12 @@
     const preview = $(".upload-preview img", tile);
     const count = $("[data-upload-count]", tile);
     const removeButton = $(".preview-remove", tile);
+    const addButton = $("[data-image-add]", tile);
     const altField = document.getElementById("alt-field");
     const rows = altField ? $("[data-alt-rows]", altField) : null;
     const rowTemplate = rows ? $("[data-alt-row]", rows).cloneNode(true) : null;
     const maxFiles = Number(input.dataset.maxFiles) || 10;
-    let selection = 0; // change à chaque nouveau choix d'images : les anciennes réponses de l'IA sont ignorées
+    let selected = []; // images choisies, dans l'ordre du carrousel : { file, url, row }
 
     function showHint(row, text) {
       const hint = $("[data-alt-hint]", row);
@@ -177,8 +178,8 @@
     }
 
     /* L'IA propose un texte alternatif pour une image ; l'auteur le relit avant de publier. */
-    async function suggestAltText(file, row, current) {
-      const url = altField.dataset.suggestUrl;
+    async function suggestAltText(entry) {
+      const { file, row } = entry;
       const field = $("textarea", row);
       const body = new FormData();
       body.append("image", file);
@@ -186,9 +187,9 @@
       showHint(row, "L'IA rédige une description de l'image…");
       field.setAttribute("aria-busy", "true");
       try {
-        const response = await fetch(url, { method: "POST", body, headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" });
+        const response = await fetch(altField.dataset.suggestUrl, { method: "POST", body, headers: { "X-Requested-With": "fetch" }, credentials: "same-origin" });
         const data = await response.json();
-        if (current !== selection) return;
+        if (!selected.includes(entry)) return; // image retirée entre-temps
         if (!response.ok) throw new Error(data.error || String(response.status));
         if (field.value) {
           showHint(row, ""); // l'auteur a commencé à écrire le sien
@@ -200,92 +201,164 @@
           showHint(row, "Suggestion de l'IA : relisez-la et corrigez-la si besoin.");
         }
       } catch (error) {
-        if (current === selection) showHint(row, "Suggestion indisponible : vous pouvez décrire l'image vous-même.");
+        if (selected.includes(entry)) showHint(row, "Suggestion indisponible : vous pouvez décrire l'image vous-même.");
       } finally {
         field.removeAttribute("aria-busy");
       }
     }
 
-    /* Une ligne par image : vignette, champ de texte alternatif et suggestion de l'IA. */
-    function buildRows(files) {
-      const current = ++selection;
-      rows.replaceChildren();
-      files.forEach((file, index) => {
-        const row = rowTemplate.cloneNode(true);
-        const thumb = $("[data-alt-thumb]", row);
-        thumb.src = URL.createObjectURL(file);
-        thumb.hidden = false;
-        $("[data-alt-label]", row).textContent = files.length > 1 ? `Image ${index + 1}` : "Texte alternatif";
-        $("textarea", row).value = "";
-        rows.append(row);
-        if (altField.dataset.suggestUrl) suggestAltText(file, row, current);
+    /* Met à jour le champ de fichiers, l'aperçu et les lignes après chaque ajout, retrait ou déplacement. */
+    function sync() {
+      const transfer = new DataTransfer();
+      selected.forEach(({ file }) => transfer.items.add(file));
+      input.files = transfer.files;
+      const total = selected.length;
+      tile.classList.toggle("has-file", total > 0);
+      if (count) {
+        count.hidden = total < 2;
+        count.textContent = `${total} images`;
+      }
+      if (addButton) addButton.hidden = total >= maxFiles;
+      if (!total) {
+        if (altField) {
+          altField.hidden = true;
+          rows.replaceChildren(rowTemplate.cloneNode(true));
+        }
+        return;
+      }
+      preview.src = selected[0].url;
+      preview.alt = total > 1 ? `Aperçu de la première des ${total} images` : `Aperçu de ${selected[0].file.name}`;
+      if (!altField) return;
+      altField.hidden = false;
+      rows.replaceChildren(...selected.map(({ row }) => row));
+      selected.forEach(({ row }, index) => {
+        const position = index + 1;
+        $("[data-alt-label]", row).textContent = total > 1 ? `Image ${position}` : "Texte alternatif";
+        $("[data-alt-thumb]", row).alt = `Image ${position}`;
+        const [up, down, remove] = $$("[data-alt-actions] button", row);
+        up.disabled = index === 0;
+        down.disabled = index === total - 1;
+        up.hidden = down.hidden = total < 2;
+        up.setAttribute("aria-label", `Avancer l'image ${position}`);
+        down.setAttribute("aria-label", `Reculer l'image ${position}`);
+        remove.setAttribute("aria-label", `Retirer l'image ${position}`);
       });
     }
 
+    function addFile(file) {
+      const entry = { file, url: URL.createObjectURL(file), row: rowTemplate.cloneNode(true) };
+      const thumb = $("[data-alt-thumb]", entry.row);
+      thumb.src = entry.url;
+      thumb.hidden = false;
+      $("textarea", entry.row).value = "";
+      $("textarea", entry.row).addEventListener("input", () => showHint(entry.row, ""));
+      $("[data-alt-actions]", entry.row).hidden = false;
+      $$("[data-move]", entry.row).forEach((button) => button.addEventListener("click", () => {
+        const from = selected.indexOf(entry);
+        const to = from + Number(button.dataset.move);
+        selected.splice(from, 1);
+        selected.splice(to, 0, entry);
+        sync();
+        button.focus();
+      }));
+      $("[data-remove-image]", entry.row).addEventListener("click", () => {
+        selected = selected.filter((item) => item !== entry);
+        URL.revokeObjectURL(entry.url);
+        sync();
+      });
+      selected.push(entry);
+      if (altField && altField.dataset.suggestUrl) suggestAltText(entry);
+    }
+
     input.addEventListener("change", () => {
+      // Le navigateur ne garde que le dernier choix : on l'ajoute aux images déjà sélectionnées.
       const files = Array.from(input.files || []);
       if (!files.length) return;
       let problem = "";
-      if (files.length > maxFiles) problem = `${maxFiles} images maximum par publication.`;
+      if (selected.length + files.length > maxFiles) problem = `${maxFiles} images maximum par publication.`;
       else if (files.some((file) => file.size > 10 * 1024 * 1024)) problem = "Une image dépasse 10 Mo.";
       else if (files.some((file) => !["image/jpeg", "image/png", "image/webp"].includes(file.type))) problem = "Formats acceptés : JPEG, PNG ou WebP.";
       if (problem) {
         showToast(problem, "error");
-        input.value = "";
+        sync();
         return;
       }
-      preview.src = URL.createObjectURL(files[0]);
-      preview.alt = files.length > 1 ? `Aperçu de la première des ${files.length} images` : `Aperçu de ${files[0].name}`;
-      if (count) {
-        count.hidden = files.length < 2;
-        count.textContent = `${files.length} images`;
-      }
-      tile.classList.add("has-file");
-      if (altField) {
-        altField.hidden = false;
-        buildRows(files);
-      }
+      files.forEach(addFile);
+      sync();
     });
+    if (addButton) addButton.addEventListener("click", (event) => { event.preventDefault(); input.click(); });
     if (removeButton) {
       removeButton.addEventListener("click", (event) => {
         event.preventDefault();
-        input.value = "";
-        if (count) count.hidden = true;
-        tile.classList.remove("has-file");
-        if (altField) {
-          altField.hidden = true;
-          selection += 1;
-          rows.replaceChildren(rowTemplate.cloneNode(true));
-        }
+        selected.forEach(({ url }) => URL.revokeObjectURL(url));
+        selected = [];
+        sync();
       });
     }
   }
 
-  /* ---------- Carrousel d'images ---------- */
+  /* ---------- Carrousel d'images : souris, doigt, clavier (← →) et lecteur d'écran ---------- */
   function initCarousel(carousel) {
     if (carousel.dataset.ready) return;
     carousel.dataset.ready = "1";
     const track = $("[data-carousel-track]", carousel);
     const counter = $("[data-carousel-count]", carousel);
+    const status = $("[data-carousel-status]", carousel);
     const prev = $("[data-carousel-prev]", carousel);
     const next = $("[data-carousel-next]", carousel);
-    const total = track.children.length;
+    const slides = Array.from(track.children);
+    const total = slides.length;
     const current = () => Math.round(track.scrollLeft / track.clientWidth);
+    let target = 0; // image demandée (le défilement doux met un moment à l'atteindre)
+    let shown = 0;
+    let settleTimer = null;
+
     const update = () => {
       const index = current();
+      const focused = document.activeElement;
       if (counter) counter.textContent = `${index + 1}/${total}`;
       if (prev) prev.disabled = index === 0;
       if (next) next.disabled = index >= total - 1;
+      // Un bouton désactivé perd le focus : on le donne à l'autre bouton.
+      if (focused === prev && prev.disabled) next.focus();
+      if (focused === next && next.disabled) prev.focus();
+      // Seule l'image visible est atteignable avec Tab ; les autres se parcourent avec les flèches.
+      slides.forEach((slide, position) => {
+        if (position === index) slide.removeAttribute("tabindex");
+        else if (slide !== document.activeElement) slide.setAttribute("tabindex", "-1");
+      });
+      if (index !== shown) {
+        shown = index;
+        // Annoncée par le lecteur d'écran, sauf si le focus est déjà sur l'image (son nom est alors lu).
+        if (status && !track.contains(document.activeElement)) status.textContent = `Image ${index + 1} sur ${total}`;
+      }
     };
-    const go = (step) => {
-      const slide = track.children[Math.min(Math.max(current() + step, 0), total - 1)];
+
+    const go = (step, moveFocus = false) => {
+      target = Math.min(Math.max(target + step, 0), total - 1);
+      const slide = slides[target];
+      if (moveFocus) {
+        slide.removeAttribute("tabindex");
+        slide.focus({ preventScroll: true });
+      }
       track.scrollTo({ left: slide.offsetLeft - track.offsetLeft });
     };
+
     if (prev) prev.addEventListener("click", () => go(-1));
     if (next) next.addEventListener("click", () => go(1));
-    track.addEventListener("scroll", () => window.requestAnimationFrame(update), { passive: true });
+    carousel.addEventListener("keydown", (event) => {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
+      event.preventDefault();
+      go(event.key === "ArrowRight" ? 1 : -1, track.contains(document.activeElement));
+    });
+    track.addEventListener("scroll", () => {
+      window.requestAnimationFrame(update);
+      clearTimeout(settleTimer);
+      settleTimer = setTimeout(() => { target = current(); }, 150); // après un glissement au doigt
+    }, { passive: true });
     update();
   }
+
 
   /* ---------- Composer : enregistrement audio dans le navigateur ---------- */
   function initRecorder(tile) {
