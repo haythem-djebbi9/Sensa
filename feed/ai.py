@@ -12,6 +12,7 @@ import math
 import threading
 
 from django.conf import settings
+from django.core.cache import cache
 
 from core.ai.text import stem, tokenize
 
@@ -96,12 +97,40 @@ def semantic_threshold(model):
     return 0.12 if model == HASH_MODEL else 0.3
 
 
+def embed_text_cached(text, ttl=3600):
+    """Embeddings mis en cache par hash du texte pour éviter les recalculs."""
+    if not text:
+        return embed_text(text)
+    key = f"feed:emb:{hashlib.md5((text or '').encode('utf-8')).hexdigest()}"
+    cached = cache.get(key)
+    if cached is not None:
+        return cached
+    result = embed_text(text)
+    cache.set(key, result, ttl)
+    return result
+
+
+def batch_embed(texts, ttl=3600):
+    """Embed plusieurs textes en réutilisant le cache."""
+    results = []
+    for text in texts:
+        results.append(embed_text_cached(text, ttl=ttl))
+    return results
+
+
+def similarity_score(text1, text2):
+    """Score de similarité rapide entre deux textes."""
+    emb1 = embed_text_cached(text1)
+    emb2 = embed_text_cached(text2)
+    return cosine(emb1, emb2)
+
+
 def publication_corpus(publication):
     """Texte servant à l'embedding : texte, descriptions d'images, transcription, tags."""
     parts = [publication.text]
-    parts += [image.description_ia or image.alt_text for image in publication.images.all()]
-    audio = publication.audio_or_none
+    parts += [getattr(image, 'description_ia', None) or getattr(image, 'alt_text', None) for image in publication.images.all()]
+    audio = getattr(publication, 'audio_or_none', None)
     if audio is not None:
-        parts.append(audio.transcription)
+        parts.append(getattr(audio, 'transcription', None))
     parts += [tag.name for tag in publication.tags.all()]
     return "\n".join(part for part in parts if part)
