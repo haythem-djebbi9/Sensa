@@ -705,27 +705,103 @@
   }
 
   /* Bouton bascule (republier, enregistrer) : `key` est le booléen renvoyé par le serveur. */
+  async function submitToggle(form, key, className, onMessage, offMessage) {
+    const button = $("button", form);
+    try {
+      const data = await postForm(form);
+      button.classList.toggle(className, data[key]);
+      button.setAttribute("aria-pressed", String(data[key]));
+      const count = $("[data-repost-count]", button);
+      if (count && "count" in data) count.textContent = data.count;
+      showToast(data[key] ? onMessage : offMessage, "info");
+    } catch (error) {
+      form.submit();
+    }
+  }
+
   function initToggleForm(form, key, className, onMessage, offMessage) {
     if (form.dataset.ready) return;
     form.dataset.ready = "1";
-    form.addEventListener("submit", async (event) => {
+    form.addEventListener("submit", (event) => {
       event.preventDefault();
-      const button = $("button", form);
-      try {
-        const data = await postForm(form);
-        button.classList.toggle(className, data[key]);
-        button.setAttribute("aria-pressed", String(data[key]));
-        const count = $("[data-repost-count]", button);
-        if (count && "count" in data) count.textContent = data.count;
-        showToast(data[key] ? onMessage : offMessage, "info");
-      } catch (error) {
-        form.submit();
-      }
+      submitToggle(form, key, className, onMessage, offMessage);
     });
   }
 
+  /* ---------- Republier avec un message (texte ou emoji) ---------- */
+  const REPOST_EMOJIS = ["😍", "🔥", "👏", "😂", "❤️", "🙌", "😮", "💯"];
+  let repostDialog = null;
+
+  /* Fenêtre partagée par toutes les publications de la page ; `onConfirm` reçoit le message saisi. */
+  function openRepostDialog(onConfirm, opener) {
+    if (!repostDialog) {
+      repostDialog = document.createElement("dialog");
+      repostDialog.className = "repost-dialog";
+      repostDialog.setAttribute("aria-labelledby", "repost-title");
+      repostDialog.innerHTML = `
+        <form method="dialog">
+          <h2 id="repost-title">${iconHtml("repeat")}Republier</h2>
+          <label class="field">
+            <span>Ajouter un message <small>(facultatif)</small></span>
+            <textarea rows="3" maxlength="200" placeholder="Dites ce que vous en pensez…"></textarea>
+          </label>
+          <div class="emoji-row" role="group" aria-label="Ajouter un emoji">
+            ${REPOST_EMOJIS.map((emoji) => `<button type="button" data-emoji="${emoji}" aria-label="Ajouter ${emoji}">${emoji}</button>`).join("")}
+          </div>
+          <div class="repost-dialog-foot">
+            <span class="character-count" data-repost-chars>0 / 200</span>
+            <button type="button" class="btn btn-ghost" data-repost-cancel>Annuler</button>
+            <button type="submit" class="btn btn-primary" value="confirm">Republier</button>
+          </div>
+        </form>`;
+      document.body.appendChild(repostDialog);
+      const field = $("textarea", repostDialog);
+      const chars = $("[data-repost-chars]", repostDialog);
+      const updateCount = () => { chars.textContent = `${field.value.length} / 200`; };
+      field.addEventListener("input", updateCount);
+      $$("[data-emoji]", repostDialog).forEach((button) => button.addEventListener("click", () => {
+        const emoji = button.dataset.emoji;
+        if (field.value.length + emoji.length <= 200) {
+          field.setRangeText(emoji, field.selectionStart, field.selectionEnd, "end");
+          updateCount();
+        }
+        field.focus();
+      }));
+      $("[data-repost-cancel]", repostDialog).addEventListener("click", () => repostDialog.close());
+      repostDialog.addEventListener("click", (event) => { if (event.target === repostDialog) repostDialog.close(); });
+      repostDialog.addEventListener("close", () => {
+        const { confirm, opener: back } = repostDialog.pending;
+        if (repostDialog.returnValue === "confirm") confirm(field.value.trim());
+        back.focus();
+      });
+    }
+    const field = $("textarea", repostDialog);
+    field.value = "";
+    $("[data-repost-chars]", repostDialog).textContent = "0 / 200";
+    repostDialog.returnValue = "";
+    repostDialog.pending = { confirm: onConfirm, opener };
+    repostDialog.showModal();
+  }
+
   function initRepostForm(form) {
-    initToggleForm(form, "republished", "republished", "Publication republiée sur votre profil.", "Republication annulée.");
+    if (form.dataset.ready) return;
+    form.dataset.ready = "1";
+    const button = $("button", form);
+    const message = $("input[name=message]", form);
+    const send = () => submitToggle(form, "republished", "republished", "Publication republiée sur votre profil.", "Republication annulée.");
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      // Déjà republiée : un clic annule. Sinon, on propose d'ajouter un message.
+      if (button.getAttribute("aria-pressed") === "true" || !window.HTMLDialogElement) {
+        if (message) message.value = "";
+        send();
+        return;
+      }
+      openRepostDialog((text) => {
+        if (message) message.value = text;
+        send();
+      }, button);
+    });
   }
 
   function initSaveForm(form) {

@@ -56,6 +56,7 @@ def following_feed(user):
             reposted_by_id=Subquery(reposts.values("member_id")[:1], output_field=UUIDField()),
             reposted_by_name=Subquery(reposts.values("member__profile__display_name")[:1]),
             reposted_by_username=Subquery(reposts.values("member__username")[:1]),
+            reposted_message=Subquery(reposts.values("message")[:1]),
         )
         .filter(Q(author_id__in=followed) | Q(author=user) | Q(reposted_at__isnull=False))
         .annotate(activity_at=Greatest("created_at", Coalesce("reposted_at", "created_at")))

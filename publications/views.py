@@ -171,23 +171,30 @@ def retry(request, pk):
 @login_required
 @require_POST
 def republish_toggle(request, pk):
-    """Republier un post (ou annuler la republication), comme sur Instagram."""
+    """Republier un post, le sien compris, avec un message facultatif (ou annuler la republication)."""
     publication = get_object_or_404(Publication.objects.visible_to(request.user).select_related("author"), pk=pk)
     existing = Republication.objects.filter(publication=publication, member=request.user)
+    message = request.POST.get("message", "").strip()
     if existing.exists():
         existing.delete()
         republished = False
-    elif publication.can_republish(request.user):
-        Republication.objects.get_or_create(publication=publication, member=request.user)
+    elif not publication.can_republish(request.user):
+        raise PermissionDenied("Seules les publications publiques peuvent être republiées.")
+    elif len(message) > Republication.MESSAGE_MAX_LENGTH:
+        error = f"Le message ne doit pas dépasser {Republication.MESSAGE_MAX_LENGTH} caractères."
+        if request.headers.get("X-Requested-With") == "fetch":
+            return JsonResponse({"error": error}, status=400)
+        messages.error(request, error)
+        return redirect(safe_next(request, publication.get_absolute_url()))
+    else:
+        Republication.objects.get_or_create(publication=publication, member=request.user, defaults={"message": message})
         republished = True
         already_notified = Notification.objects.filter(
             recipient=publication.author, actor=request.user, type=Notification.Type.REPUBLISH, publication=publication
         ).exists()
-        if not already_notified:
+        if publication.author_id != request.user.pk and not already_notified:
             notify(publication.author, Notification.Type.REPUBLISH, actor=request.user, publication=publication,
-                   message=publication.excerpt)
-    else:
-        raise PermissionDenied("Seules les publications publiques des autres membres peuvent être republiées.")
+                   message=message or publication.excerpt)
     count = publication.republications.count()
     if request.headers.get("X-Requested-With") == "fetch":
         return JsonResponse({"republished": republished, "count": count})

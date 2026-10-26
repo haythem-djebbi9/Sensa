@@ -303,8 +303,8 @@ class RepublicationRulesTests(SensaTestCase):
     def test_member_can_republish_public_ready_post(self):
         self.assertTrue(self.post.can_republish(self.noah))
 
-    def test_author_cannot_republish_own_post(self):
-        self.assertFalse(self.post.can_republish(self.lina))
+    def test_author_can_republish_own_post(self):
+        self.assertTrue(self.post.can_republish(self.lina))
 
     def test_only_public_ready_posts_are_republishable(self):
         self.post.visibility = Publication.Visibility.FOLLOWERS
@@ -346,10 +346,32 @@ class RepublishToggleTests(SensaTestCase):
         self.assertEqual(notifications.count(), 1)
         self.assertEqual(notifications.get().title, "noah a republié votre publication")
 
-    def test_own_post_refused(self):
+    def test_own_post_republished_without_notification(self):
+        from social.models import Notification
+
         self.client.force_login(self.lina)
-        self.assertEqual(self.client.post(self.url).status_code, 403)
+        response = self.client.post(self.url, headers={"X-Requested-With": "fetch"})
+        self.assertEqual(response.json(), {"republished": True, "count": 1})
+        self.assertFalse(Notification.objects.filter(type=Notification.Type.REPUBLISH).exists())
+
+    def test_message_saved_and_shown_to_author(self):
+        from social.models import Notification
+
+        self.client.post(self.url, {"message": "  Trop beau 😍  "})
+        self.assertEqual(Republication.objects.get().message, "Trop beau 😍")
+        self.assertEqual(Notification.objects.get(type=Notification.Type.REPUBLISH).message, "Trop beau 😍")
+
+    def test_too_long_message_refused(self):
+        response = self.client.post(self.url, {"message": "x" * 201}, headers={"X-Requested-With": "fetch"})
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("200 caractères", response.json()["error"])
         self.assertFalse(Republication.objects.exists())
+
+    def test_profile_tab_shows_message(self):
+        Republication.objects.create(publication=self.post, member=self.noah, message="À voir absolument 🔥")
+        response = self.client.get(reverse("accounts:profile", args=["noah"]), {"onglet": "republications", "vue": "liste"})
+        self.assertContains(response, "À voir absolument 🔥")
+        self.assertContains(response, "Vous avez republié")
 
     def test_followers_only_post_refused(self):
         from social.models import Abonnement
@@ -366,10 +388,10 @@ class RepublishToggleTests(SensaTestCase):
         response = self.client.get(reverse("publications:card", args=[self.post.pk]))
         self.assertContains(response, "data-repost-form")
         self.assertContains(response, 'class="action-btn republished"')
-        self.client.force_login(self.lina)
+        self.client.force_login(self.lina)  # l'autrice peut aussi republier
         response = self.client.get(reverse("publications:card", args=[self.post.pk]))
-        self.assertNotContains(response, "data-repost-form")
-        self.assertContains(response, 'title="Republications"')
+        self.assertContains(response, "data-repost-form")
+        self.assertContains(response, "<span data-repost-count>1</span>", html=False)
 
 
 class RepublicationProfileTests(SensaTestCase):

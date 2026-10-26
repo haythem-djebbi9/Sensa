@@ -237,6 +237,18 @@ h3 { font-size: 1.05rem; line-height: 1.35; }
 .saved { color: var(--color-nuit); }
 .saved .icon { fill: currentColor; }
 .action-static { cursor: default; }
+/* Republication avec message */
+.repost-message { margin: -0.45rem 0 0.9rem; padding: 0.5rem 0.8rem; border-left: 0.1875rem solid var(--color-sensa); border-radius: 0 0.6rem 0.6rem 0; background: var(--color-lavande); color: var(--color-nuit); font-size: 0.9rem; overflow-wrap: anywhere; }
+.repost-dialog { width: min(28rem, calc(100vw - 2rem)); padding: 1.3rem; border: 0; border-radius: var(--radius-card); color: var(--color-nuit); box-shadow: 0 1.5rem 3rem rgba(30,27,58,.25); }
+.repost-dialog::backdrop { background: rgba(30,27,58,.45); }
+.repost-dialog h2 { display: flex; align-items: center; gap: 0.5rem; margin: 0 0 1rem; font-size: 1.1rem; }
+.repost-dialog h2 .icon { color: var(--color-sensa); }
+.repost-dialog .field small { color: var(--color-ardoise); font-weight: 400; }
+.emoji-row { display: grid; grid-template-columns: repeat(8, 1fr); gap: 0.3rem; margin-top: 0.6rem; }
+.emoji-row button { height: 2.4rem; border-radius: 0.6rem; background: var(--color-soft); font-size: 1.2rem; line-height: 1; cursor: pointer; transition: transform 120ms, background 120ms; }
+.emoji-row button:hover { background: var(--color-lavande); transform: scale(1.12); }
+.repost-dialog-foot { display: flex; align-items: center; gap: 0.6rem; margin-top: 1.1rem; }
+.repost-dialog-foot .character-count { margin-right: auto; }
 .action-static:hover { background: transparent; color: var(--color-ardoise); }
 
 /* --- Menu contextuel --- */
