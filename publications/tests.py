@@ -85,6 +85,22 @@ class PublishTests(SensaTestCase):
         self.assertContains(response, "data-carousel")
         self.assertContains(response, "1/3")
 
+    def test_detail_page_has_carousel_and_full_screen_links(self):
+        self.publish(self.client, {"text": "Deux photos"}, {"image": [image_upload("a.png"), image_upload("b.png")]})
+        post = Publication.objects.get()
+        response = self.client.get(post.get_absolute_url())
+        self.assertContains(response, "data-carousel")
+        self.assertContains(response, "1/2")
+        for image in post.images.all():
+            self.assertContains(response, f'href="{image.file.url}" data-lightbox')
+
+    def test_feed_photo_has_blurred_backdrop(self):
+        self.publish(self.client, {"text": ""}, {"image": image_upload()})
+        post = Publication.objects.get()
+        response = self.client.get(reverse("publications:card", args=[post.pk]))
+        self.assertContains(response, 'class="media-backdrop"')
+        self.assertContains(response, 'alt="" aria-hidden="true"')
+
     def test_too_long_alt_text_rejected(self):
         response = self.publish(self.client, {"text": "test", "alt_text": ["Court", "x" * 301]},
                                 {"image": [image_upload(), image_upload()]})

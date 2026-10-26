@@ -14,6 +14,13 @@
     return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
   }
 
+  /* Icône SVG du gabarit #icon-templates (base.html). */
+  function iconHtml(name, fallback = "") {
+    const template = $("#icon-templates");
+    const icon = template ? template.content.querySelector(`[data-icon="${name}"]`) : null;
+    return icon ? icon.innerHTML : fallback;
+  }
+
   function escapeHtml(value) {
     const div = document.createElement("div");
     div.textContent = value == null ? "" : String(value);
@@ -157,6 +164,16 @@
     update();
   }
 
+  /* ---------- Composer : zone de texte qui grandit au fil de l'écriture ---------- */
+  function initAutoGrow(textarea) {
+    const grow = () => {
+      textarea.style.height = "auto";
+      textarea.style.height = `${textarea.scrollHeight}px`;
+    };
+    textarea.addEventListener("input", grow);
+    grow();
+  }
+
   /* ---------- Composer : images (carrousel) et textes alternatifs ---------- */
   function initImageInput(input) {
     const tile = input.closest(".upload-tile");
@@ -165,11 +182,13 @@
     const count = $("[data-upload-count]", tile);
     const removeButton = $(".preview-remove", tile);
     const addButton = $("[data-image-add]", tile);
+    const thumbs = $("[data-upload-thumbs]", input.form);
     const altField = document.getElementById("alt-field");
     const rows = altField ? $("[data-alt-rows]", altField) : null;
     const rowTemplate = rows ? $("[data-alt-row]", rows).cloneNode(true) : null;
     const maxFiles = Number(input.dataset.maxFiles) || 10;
     let selected = []; // images choisies, dans l'ordre du carrousel : { file, url, row }
+    let shown = null; // image affichée en grand dans l'aperçu
 
     function showHint(row, text) {
       const hint = $("[data-alt-hint]", row);
@@ -214,20 +233,24 @@
       input.files = transfer.files;
       const total = selected.length;
       tile.classList.toggle("has-file", total > 0);
-      if (count) {
-        count.hidden = total < 2;
-        count.textContent = `${total} images`;
-      }
+      if (count) count.hidden = total < 2;
       if (addButton) addButton.hidden = total >= maxFiles;
+      if (thumbs) thumbs.hidden = total < 2;
       if (!total) {
+        shown = null;
+        if (thumbs) thumbs.replaceChildren();
         if (altField) {
           altField.hidden = true;
           rows.replaceChildren(rowTemplate.cloneNode(true));
         }
         return;
       }
-      preview.src = selected[0].url;
-      preview.alt = total > 1 ? `Aperçu de la première des ${total} images` : `Aperçu de ${selected[0].file.name}`;
+      if (!selected.includes(shown)) shown = selected[0];
+      const shownPosition = selected.indexOf(shown) + 1;
+      preview.src = shown.url;
+      preview.alt = total > 1 ? `Aperçu de l'image ${shownPosition} sur ${total}` : `Aperçu de ${shown.file.name}`;
+      if (count) count.textContent = `${shownPosition}/${total}`;
+      if (thumbs) thumbs.replaceChildren(...selected.map(thumbItem));
       if (!altField) return;
       altField.hidden = false;
       rows.replaceChildren(...selected.map(({ row }) => row));
@@ -243,6 +266,38 @@
         down.setAttribute("aria-label", `Reculer l'image ${position}`);
         remove.setAttribute("aria-label", `Retirer l'image ${position}`);
       });
+    }
+
+    function removeEntry(entry) {
+      selected = selected.filter((item) => item !== entry);
+      URL.revokeObjectURL(entry.url);
+      sync();
+    }
+
+    /* Vignette de la rangée sous l'aperçu : la toucher l'affiche en grand, × la retire. */
+    function thumbItem(entry, index) {
+      const position = index + 1;
+      const item = document.createElement("li");
+      item.className = "upload-thumb";
+      item.innerHTML = '<button type="button" class="thumb-show"><img alt=""></button><span class="thumb-number" aria-hidden="true"></span><button type="button" class="thumb-remove"></button>';
+      const [show, remove] = $$("button", item);
+      $("img", show).src = entry.url;
+      $(".thumb-number", item).textContent = position;
+      show.setAttribute("aria-label", `Afficher l'image ${position}`);
+      show.setAttribute("aria-pressed", String(entry === shown));
+      remove.setAttribute("aria-label", `Retirer l'image ${position}`);
+      remove.innerHTML = iconHtml("x", "×");
+      show.addEventListener("click", () => {
+        shown = entry;
+        sync();
+        $$(".thumb-show", thumbs)[index].focus();
+      });
+      remove.addEventListener("click", () => {
+        removeEntry(entry);
+        const next = $$(".thumb-remove", thumbs)[Math.min(index, selected.length - 1)];
+        (thumbs.hidden || !next ? addButton || input : next).focus();
+      });
+      return item;
     }
 
     function addFile(file) {
@@ -261,18 +316,13 @@
         sync();
         button.focus();
       }));
-      $("[data-remove-image]", entry.row).addEventListener("click", () => {
-        selected = selected.filter((item) => item !== entry);
-        URL.revokeObjectURL(entry.url);
-        sync();
-      });
+      $("[data-remove-image]", entry.row).addEventListener("click", () => removeEntry(entry));
       selected.push(entry);
       if (altField && altField.dataset.suggestUrl) suggestAltText(entry);
     }
 
-    input.addEventListener("change", () => {
-      // Le navigateur ne garde que le dernier choix : on l'ajoute aux images déjà sélectionnées.
-      const files = Array.from(input.files || []);
+    /* Ajoute des images choisies avec le bouton ou déposées sur le formulaire. */
+    function addFiles(files) {
       if (!files.length) return;
       let problem = "";
       if (selected.length + files.length > maxFiles) problem = `${maxFiles} images maximum par publication.`;
@@ -285,7 +335,36 @@
       }
       files.forEach(addFile);
       sync();
+    }
+
+    // Le navigateur ne garde que le dernier choix : on l'ajoute aux images déjà sélectionnées.
+    input.addEventListener("change", () => addFiles(Array.from(input.files || [])));
+
+    // Glisser-déposer des fichiers n'importe où sur le formulaire ; la zone des images s'illumine.
+    let dragDepth = 0;
+    const carriesFiles = (event) => Array.from(event.dataTransfer ? event.dataTransfer.types : []).includes("Files");
+    const endDrag = () => { dragDepth = 0; tile.classList.remove("is-dragover"); };
+    input.form.addEventListener("dragenter", (event) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      dragDepth += 1;
+      tile.classList.add("is-dragover");
     });
+    input.form.addEventListener("dragover", (event) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    });
+    input.form.addEventListener("dragleave", (event) => {
+      if (carriesFiles(event) && --dragDepth <= 0) endDrag();
+    });
+    input.form.addEventListener("drop", (event) => {
+      if (!carriesFiles(event)) return;
+      event.preventDefault();
+      endDrag();
+      addFiles(Array.from(event.dataTransfer.files));
+    });
+
     if (addButton) addButton.addEventListener("click", (event) => { event.preventDefault(); input.click(); });
     if (removeButton) {
       removeButton.addEventListener("click", (event) => {
@@ -307,6 +386,8 @@
     const prev = $("[data-carousel-prev]", carousel);
     const next = $("[data-carousel-next]", carousel);
     const slides = Array.from(track.children);
+    // Élément atteignable au clavier dans chaque image : la diapositive elle-même (fil) ou son lien (page de détail).
+    const targets = slides.map((slide) => (slide.matches("a") ? slide : $("a", slide) || slide));
     const total = slides.length;
     const current = () => Math.round(track.scrollLeft / track.clientWidth);
     let target = 0; // image demandée (le défilement doux met un moment à l'atteindre)
@@ -323,7 +404,7 @@
       if (focused === prev && prev.disabled) next.focus();
       if (focused === next && next.disabled) prev.focus();
       // Seule l'image visible est atteignable avec Tab ; les autres se parcourent avec les flèches.
-      slides.forEach((slide, position) => {
+      targets.forEach((slide, position) => {
         if (position === index) slide.removeAttribute("tabindex");
         else if (slide !== document.activeElement) slide.setAttribute("tabindex", "-1");
       });
@@ -338,8 +419,8 @@
       target = Math.min(Math.max(target + step, 0), total - 1);
       const slide = slides[target];
       if (moveFocus) {
-        slide.removeAttribute("tabindex");
-        slide.focus({ preventScroll: true });
+        targets[target].removeAttribute("tabindex");
+        targets[target].focus({ preventScroll: true });
       }
       track.scrollTo({ left: slide.offsetLeft - track.offsetLeft });
     };
@@ -359,6 +440,120 @@
     update();
   }
 
+  /* ---------- Images : apparition en fondu une fois chargées ---------- */
+  function initFadeIn(img) {
+    if (img.complete) return; // déjà affichée : pas de clignotement
+    img.classList.add("fade-pending");
+    const show = () => img.classList.remove("fade-pending");
+    img.addEventListener("load", show, { once: true });
+    img.addEventListener("error", show, { once: true });
+  }
+
+  /* ---------- Double-tap sur une photo : j'aime ---------- */
+  /* Un toucher garde son action (ouvrir la publication, agrandir l'image) ;
+     deux touchers rapprochés aiment la publication, avec un cœur sur la photo. */
+  function initDoubleTap(media, likeForm, onSingle) {
+    if (media.dataset.tapReady) return;
+    media.dataset.tapReady = "1";
+    let timer = null;
+    media.addEventListener("click", (event) => {
+      // Ctrl/⌘-clic, clic milieu : comportement normal du lien (nouvel onglet…).
+      if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      event.preventDefault();
+      // Clavier (Entrée) ou pas de bouton J'aime : action immédiate.
+      if (event.detail === 0 || !likeForm) { onSingle(); return; }
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+        likeFromPhoto(media, likeForm);
+        return;
+      }
+      timer = setTimeout(() => { timer = null; onSingle(); }, 260);
+    });
+  }
+
+  function likeFromPhoto(media, likeForm) {
+    const frame = $(".media-frame", media) || media;
+    const burst = document.createElement("span");
+    burst.className = "like-burst";
+    burst.setAttribute("aria-hidden", "true");
+    burst.innerHTML = iconHtml("heart", "♥");
+    frame.appendChild(burst);
+    setTimeout(() => burst.remove(), 900);
+    // Comme sur les réseaux sociaux, le double-tap aime mais n'annule jamais un j'aime.
+    if ($("button", likeForm).getAttribute("aria-pressed") !== "true") likeForm.requestSubmit();
+  }
+
+  function initFeedMedia(media) {
+    const card = media.closest(".post-card");
+    initDoubleTap(media, card ? $("form[data-like-form]", card) : null, () => { window.location.href = media.href; });
+  }
+
+  /* ---------- Plein écran des images (page d'une publication) ---------- */
+  function initLightbox(card) {
+    const links = $$("[data-lightbox]", card);
+    if (!links.length || !window.HTMLDialogElement || card.dataset.lightboxReady) return;
+    card.dataset.lightboxReady = "1";
+    const total = links.length;
+    const dialog = document.createElement("dialog");
+    dialog.className = "lightbox";
+    dialog.setAttribute("aria-label", "Image en plein écran");
+    dialog.innerHTML = `
+      <button type="button" class="lightbox-close" aria-label="Fermer (Échap)">${iconHtml("x", "×")}</button>
+      <img class="lightbox-img" alt="">
+      <span class="lightbox-count" aria-hidden="true"></span>
+      <span class="sr-only" aria-live="polite"></span>
+      <button type="button" class="carousel-nav carousel-prev lightbox-nav" aria-label="Image précédente">${iconHtml("arrow", "‹")}</button>
+      <button type="button" class="carousel-nav carousel-next lightbox-nav" aria-label="Image suivante">${iconHtml("arrow", "›")}</button>`;
+    document.body.appendChild(dialog);
+    const image = $(".lightbox-img", dialog);
+    const counter = $(".lightbox-count", dialog);
+    const status = $("[aria-live]", dialog);
+    const [prev, next] = $$(".lightbox-nav", dialog);
+    let index = 0;
+
+    const show = (position, announce = false) => {
+      index = Math.min(Math.max(position, 0), total - 1);
+      image.src = links[index].href;
+      image.alt = $(".media-img", links[index]).alt;
+      counter.textContent = `${index + 1}/${total}`;
+      counter.hidden = prev.hidden = next.hidden = total < 2;
+      prev.disabled = index === 0;
+      next.disabled = index === total - 1;
+      if (announce) status.textContent = `Image ${index + 1} sur ${total}`;
+    };
+
+    links.forEach((link, position) => {
+      initDoubleTap(link, $("form[data-like-form]", card), () => {
+        show(position);
+        status.textContent = "";
+        dialog.showModal();
+        document.documentElement.classList.add("lightbox-open");
+      });
+    });
+    prev.addEventListener("click", () => show(index - 1, true));
+    next.addEventListener("click", () => show(index + 1, true));
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        show(index + (event.key === "ArrowRight" ? 1 : -1), true);
+      }
+    });
+    // Un clic à côté de l'image ferme ; un glissement au doigt change d'image.
+    dialog.addEventListener("click", (event) => { if (event.target === dialog) dialog.close(); });
+    $(".lightbox-close", dialog).addEventListener("click", () => dialog.close());
+    let touchStart = null;
+    dialog.addEventListener("touchstart", (event) => { touchStart = event.touches[0].clientX; }, { passive: true });
+    dialog.addEventListener("touchend", (event) => {
+      const distance = event.changedTouches[0].clientX - touchStart;
+      if (Math.abs(distance) > 50) show(index + (distance < 0 ? 1 : -1), true);
+    });
+    // En fermant, on revient sur l'image regardée en dernier (le carrousel suit).
+    dialog.addEventListener("close", () => {
+      document.documentElement.classList.remove("lightbox-open");
+      links[index].focus();
+    });
+  }
 
   /* ---------- Composer : enregistrement audio dans le navigateur ---------- */
   function initRecorder(tile) {
@@ -496,6 +691,11 @@
         const data = await postForm(form);
         button.classList.toggle("liked", data.liked);
         button.setAttribute("aria-pressed", String(data.liked));
+        if (data.liked) {
+          button.classList.remove("like-pop");
+          void button.offsetWidth; // relance l'animation du cœur
+          button.classList.add("like-pop");
+        }
         const count = $("[data-like-count]", button);
         if (count) count.textContent = data.count;
       } catch (error) {
@@ -712,6 +912,9 @@
   function enhance(root) {
     $$("[data-audio-player]", root).forEach(initAudioPlayer);
     $$("[data-carousel]", root).forEach(initCarousel);
+    $$(".media-frame img", root).forEach(initFadeIn);
+    $$(".post-card .media-wrap", root).forEach(initFeedMedia);
+    $$("[data-detail-post]", root).forEach(initLightbox);
     $$("[data-toggle-target]", root).forEach(initToggle);
     $$("form[data-like-form]", root).forEach(initLikeForm);
     $$("form[data-repost-form]", root).forEach(initRepostForm);
@@ -726,6 +929,7 @@
   document.addEventListener("DOMContentLoaded", () => {
     $$(".toast").forEach(initToast);
     $$("textarea[data-char-source]").forEach(initCharCount);
+    $$(".composer textarea[data-char-source]").forEach(initAutoGrow);
     $$("[data-image-input]").forEach(initImageInput);
     $$("[data-recorder]").forEach(initRecorder);
     $$("input[type=range][data-output]").forEach(initRange);

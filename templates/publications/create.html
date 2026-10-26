@@ -31,8 +31,10 @@
         <label class="upload-label" for="{{ form.image.id_for_label }}">
           <span class="upload-icon">{% icon "upload" %}</span>
           <strong>Ajouter des images</strong>
+          <span class="drop-hint">ou glissez-les ici</span>
           <span>JPEG, PNG ou WebP · jusqu'à {{ SENSA_MAX_IMAGES }} images de 10 Mo</span>
         </label>
+        <span class="drop-overlay" aria-hidden="true">{% icon "upload" %}Déposez vos images ici</span>
         {{ form.image }}
         <div class="upload-preview">
           <img alt="">
@@ -52,6 +54,7 @@
         <a href="#" class="file-alt record-import" data-audio-import>ou importer un fichier audio</a>
       </div>
     </div>
+    <ul class="upload-thumbs" data-upload-thumbs aria-label="Images sélectionnées" hidden></ul>
     <div class="sr-only">{{ form.audio }}</div>
     {{ form.image.errors }}
     {{ form.audio.errors }}
@@ -90,7 +93,7 @@
 
     <div class="composer-actions">
       <span class="muted">{{ remaining }} publication{{ remaining|pluralize }} restante{{ remaining|pluralize }} cette heure-ci (limite : {{ limit }})</span>
-      <a class="btn btn-ghost" href="{% url 'feed:home' %}">Annuler</a>
+      <a class="btn btn-ghost action-cancel" href="{% url 'feed:home' %}">Annuler</a>
       <button type="submit" name="action" value="draft" class="btn btn-secondary">Enregistrer en brouillon</button>
       <button type="submit" class="btn btn-primary">Publier</button>
     </div>

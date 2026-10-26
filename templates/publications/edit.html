@@ -65,7 +65,7 @@
     </div>
     <div class="composer-actions">
       <a class="btn btn-ghost btn-danger-text action-start" href="{% url 'publications:delete' post.pk %}">{% icon "trash" 16 %}Supprimer</a>
-      <a class="btn btn-ghost" href="{{ cancel_url }}">Annuler</a>
+      <a class="btn btn-ghost action-cancel" href="{{ cancel_url }}">Annuler</a>
       {% if post.is_draft %}
         <button type="submit" class="btn btn-secondary">Enregistrer le brouillon</button>
         <button type="submit" name="action" value="publish" class="btn btn-primary">Publier</button>

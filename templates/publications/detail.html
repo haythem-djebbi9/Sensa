@@ -43,9 +43,20 @@
       </section>
     {% endif %}
 
-    {% for image in post.images.all %}
-      <figure id="image-{{ image.pk }}" style="margin:0">
-        <div class="detail-image"><img src="{{ image.file.url }}" alt="{{ image.alt }}"></div>
+    {% with images=post.images.all %}
+    {% if images %}
+    {% with ratio=images.0.aspect_ratio count=images|length %}
+    <div class="detail-media{% if count > 1 %} carousel{% endif %}" style="--ratio: {{ ratio }}"{% if count > 1 %} data-carousel role="region" aria-roledescription="carrousel" aria-label="{{ count }} images de la publication"{% endif %}>
+    {% if count > 1 %}<div class="carousel-track" data-carousel-track>{% endif %}
+    {% for image in images %}
+      <figure class="detail-figure" id="image-{{ image.pk }}">
+        {# Sans JavaScript, le lien ouvre l'image originale ; sinon, elle s'affiche en plein écran. #}
+        <a class="media-frame detail-zoom" href="{{ image.file.url }}" data-lightbox{% if count > 1 and not forloop.first %} tabindex="-1"{% endif %}>
+          {% if count > 1 %}<span class="sr-only">Image {{ forloop.counter }} sur {{ count }} : </span>{% endif %}
+          <img class="media-backdrop" src="{{ image.display_url }}" alt="" aria-hidden="true">
+          <img class="media-img" src="{{ image.display_url }}" alt="{{ image.alt }}">
+          <span class="sr-only"> (agrandir)</span>
+        </a>
         <figcaption class="description-box">
           {% if image.description_ia %}
             {% badge "ai" "Description IA" %}
@@ -68,6 +79,17 @@
         </figcaption>
       </figure>
     {% endfor %}
+    {% if count > 1 %}
+      </div>
+      <span class="carousel-count" data-carousel-count aria-hidden="true">1/{{ count }}</span>
+      <span class="sr-only" data-carousel-status aria-live="polite"></span>
+      <button type="button" class="carousel-nav carousel-prev" data-carousel-prev aria-label="Image précédente" disabled>{% icon "arrow" 18 %}</button>
+      <button type="button" class="carousel-nav carousel-next" data-carousel-next aria-label="Image suivante">{% icon "arrow" 18 %}</button>
+    {% endif %}
+    </div>
+    {% endwith %}
+    {% endif %}
+    {% endwith %}
 
     {% with audio=post.audio_or_none %}
       {% if audio %}
