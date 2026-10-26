@@ -700,3 +700,23 @@ class DisplayVersionTests(SensaTestCase):
         image.refresh_from_db()
         self.assertTrue(image.display)
         self.assertIn("1 version(s) allégée(s) créée(s).", out.getvalue())
+
+
+class DescriptionQualityTests(SensaTestCase):
+    @override_settings(GROQ_API_KEY="gsk-test", SENSA_GROQ_VISION_MODEL="qwen/qwen3.8-27b", SENSA_AI_PROVIDERS=["groq"])
+    def test_vision_call_uses_low_temperature_and_french_only_prompt(self):
+        from types import SimpleNamespace
+
+        from core.ai import groq_provider
+
+        chat = mock.Mock(return_value=SimpleNamespace(
+            choices=[SimpleNamespace(finish_reason="stop", message=SimpleNamespace(content='{"description": "Un port."}'))],
+            usage=None,
+        ))
+        client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=chat)))
+        with mock.patch.object(groq_provider, "get_client", return_value=client):
+            description, provider = ai.describe_with_llm(image_upload().read())
+        self.assertEqual((description, provider), ("Un port.", "groq"))
+        kwargs = chat.call_args.kwargs
+        self.assertEqual(kwargs["temperature"], ai.DESCRIPTION_TEMPERATURE)
+        self.assertIn("uniquement en français", kwargs["messages"][0]["content"][0]["text"])
