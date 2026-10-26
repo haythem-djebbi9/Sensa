@@ -782,3 +782,80 @@ class CarouselAccessibilityTests(SensaTestCase):
 
     def test_ai_caption_hidden_when_it_duplicates_alt(self):
         self.assertEqual(self.response.content.decode().count('class="ai-caption" aria-hidden="true"'), 2)
+
+
+class DraftTests(SensaTestCase):
+    def setUp(self):
+        self.lina = make_member("lina")
+        self.client.force_login(self.lina)
+
+    def save_draft(self, text="Idée à terminer #brouillon", files=None):
+        payload = {"text": text, "visibility": "PUBLIC", "action": "draft", **(files or {})}
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("publications:create"), payload)
+        return response, Publication.objects.get(text=text)
+
+    def test_draft_saved_without_ai_analysis(self):
+        response, draft = self.save_draft(files={"image": image_upload()})
+        self.assertRedirects(response, "/@lina/?onglet=brouillons")
+        self.assertEqual(draft.status, Publication.Status.DRAFT)
+        self.assertFalse(draft.analyses.exists())
+        self.assertEqual(draft.get_absolute_url(), reverse("publications:edit", args=[draft.pk]))
+
+    def test_draft_visible_nowhere(self):
+        from accounts.models import Membre
+        from social.models import Abonnement
+
+        _, draft = self.save_draft()
+        noah = make_member("noah")
+        Abonnement.objects.create(follower=noah, followed=self.lina)
+        for user in (self.lina, noah, make_member("camille", role=Membre.Role.MODERATEUR)):
+            self.assertFalse(Publication.objects.visible_to(user).filter(pk=draft.pk).exists())
+        self.assertNotContains(self.client.get(reverse("feed:home")), "Idée à terminer")
+        self.assertEqual(self.client.get(reverse("publications:detail", args=[draft.pk])).status_code, 404)
+
+    def test_drafts_tab_private(self):
+        _, draft = self.save_draft()
+        response = self.client.get(reverse("accounts:profile", args=["lina"]), {"onglet": "brouillons"})
+        self.assertEqual(list(response.context["posts"]), [draft])
+        self.assertContains(response, "Brouillons · 1")
+        self.client.force_login(make_member("noah"))
+        response = self.client.get(reverse("accounts:profile", args=["lina"]), {"onglet": "brouillons"})
+        self.assertEqual(response.context["tab"], "publications")
+        self.assertNotContains(response, "Brouillons")
+
+    def test_editing_draft_does_not_publish(self):
+        _, draft = self.save_draft()
+        with self.captureOnCommitCallbacks(execute=True):
+            self.client.post(reverse("publications:edit", args=[draft.pk]), {"text": "Texte retravaillé", "visibility": "PUBLIC"})
+        draft.refresh_from_db()
+        self.assertEqual((draft.text, draft.status), ("Texte retravaillé", Publication.Status.DRAFT))
+        self.assertFalse(draft.analyses.exists())
+
+    def test_publish_draft(self):
+        from datetime import timedelta
+
+        from django.utils import timezone
+
+        _, draft = self.save_draft()
+        Publication.objects.filter(pk=draft.pk).update(created_at=timezone.now() - timedelta(days=3))
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(reverse("publications:edit", args=[draft.pk]),
+                                        {"text": draft.text, "visibility": "PUBLIC", "action": "publish"})
+        self.assertRedirects(response, reverse("feed:home"))
+        draft.refresh_from_db()
+        self.assertEqual(draft.status, Publication.Status.READY)
+        self.assertGreater(draft.created_at, timezone.now() - timedelta(minutes=1))
+        self.assertTrue(draft.analyses.exists())
+        self.assertContains(self.client.get(reverse("feed:home")), "Idée à terminer")
+
+    @override_settings(SENSA_POSTS_PER_HOUR=1)
+    def test_drafts_do_not_count_but_publishing_does(self):
+        _, first = self.save_draft("Brouillon un")
+        self.save_draft("Brouillon deux")
+        self.publish(self.client, {"text": "Publication directe"})
+        response = self.client.post(reverse("publications:edit", args=[first.pk]),
+                                    {"text": first.text, "visibility": "PUBLIC", "action": "publish"})
+        self.assertEqual(response.status_code, 429)
+        first.refresh_from_db()
+        self.assertEqual(first.status, Publication.Status.DRAFT)

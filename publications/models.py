@@ -16,15 +16,16 @@ class PublicationQuerySet(models.QuerySet):
     PUBLIC_STATUSES = ("PENDING", "READY", "FAILED")
 
     def visible_to(self, user):
-        """Publications qu'un utilisateur a le droit de voir."""
+        """Publications qu'un utilisateur a le droit de voir (les brouillons ne sont visibles nulle part)."""
         if not user.is_authenticated:
             return self.filter(status="READY", visibility="PUBLIC")
+        queryset = self.exclude(status="DRAFT")
         if user.is_moderator:
-            return self.all()
+            return queryset
         from social.models import Abonnement
 
         follows = Abonnement.objects.filter(follower=user, followed=OuterRef("author"))
-        return self.annotate(_followed=Exists(follows)).filter(
+        return queryset.annotate(_followed=Exists(follows)).filter(
             Q(author=user)
             | Q(status__in=self.PUBLIC_STATUSES, visibility="PUBLIC")
             | Q(status__in=self.PUBLIC_STATUSES, visibility="FOLLOWERS", _followed=True)
@@ -57,6 +58,7 @@ class Publication(models.Model):
         UNDER_REVIEW = "UNDER_REVIEW", "En revue"
         FAILED = "FAILED", "Échec de l'analyse IA"
         BLOCKED = "BLOCKED", "Bloqué"
+        DRAFT = "DRAFT", "Brouillon"
 
     class Visibility(models.TextChoices):
         PUBLIC = "PUBLIC", "Public"
@@ -88,7 +90,14 @@ class Publication(models.Model):
         return f"{self.author} · {excerpt[:40] or 'publication média'}"
 
     def get_absolute_url(self):
+        # Un brouillon n'a pas de page publique : on l'ouvre pour le terminer.
+        if self.is_draft:
+            return reverse("publications:edit", args=[self.pk])
         return reverse("publications:detail", args=[self.pk])
+
+    @property
+    def is_draft(self):
+        return self.status == self.Status.DRAFT
 
     @property
     def audio_or_none(self):

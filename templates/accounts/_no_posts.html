@@ -1,6 +1,10 @@
 {% load sensa_tags %}
 <div class="card empty-state" style="grid-column: 1 / -1">
-  {% if tab == "enregistres" %}
+  {% if tab == "brouillons" %}
+    {% icon "edit" 28 %}
+    <strong>Aucun brouillon</strong>
+    <span>Choisissez « Enregistrer en brouillon » en créant une publication pour la terminer plus tard.</span>
+  {% elif tab == "enregistres" %}
     {% icon "bookmark" 28 %}
     <strong>Aucune publication enregistrée</strong>
     <span>Touchez {% icon "bookmark" 14 %} sous un post pour le retrouver ici. Vous seul·e voyez cette liste.</span>

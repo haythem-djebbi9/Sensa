@@ -91,6 +91,7 @@
     <div class="composer-actions">
       <span class="muted">{{ remaining }} publication{{ remaining|pluralize }} restante{{ remaining|pluralize }} cette heure-ci (limite : {{ limit }})</span>
       <a class="btn btn-ghost" href="{% url 'feed:home' %}">Annuler</a>
+      <button type="submit" name="action" value="draft" class="btn btn-secondary">Enregistrer en brouillon</button>
       <button type="submit" class="btn btn-primary">Publier</button>
     </div>
   </form>

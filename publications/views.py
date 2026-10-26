@@ -33,18 +33,41 @@ def vision_quota_exceeded(user):
 
 
 def posts_last_hour(user):
-    return Publication.objects.filter(author=user, created_at__gte=timezone.now() - timedelta(hours=1)).count()
+    recent = Publication.objects.filter(author=user, created_at__gte=timezone.now() - timedelta(hours=1))
+    return recent.exclude(status=Publication.Status.DRAFT).count()
+
+
+def rate_limited(request):
+    return render(request, "publications/rate_limited.html", {"limit": settings.SENSA_POSTS_PER_HOUR}, status=429)
+
+
+def drafts_url(user):
+    return reverse("accounts:profile", args=[user.username]) + "?onglet=brouillons"
+
+
+def publish_draft(request, publication):
+    """Publie un brouillon : il prend la date du jour et l'IA l'analyse."""
+    if posts_last_hour(request.user) >= settings.SENSA_POSTS_PER_HOUR:
+        return rate_limited(request)
+    Publication.objects.filter(pk=publication.pk).update(status=Publication.Status.PENDING, created_at=timezone.now())
+    pipeline.launch(Publication.objects.get(pk=publication.pk))
+    messages.success(request, "C'est en ligne ! L'IA enrichit votre publication en arrière-plan.")
+    return redirect("feed:home")
 
 
 @login_required
 def create(request):
-    """Formulaire de publication : texte + image + audio, publié immédiatement (PENDING)."""
+    """Formulaire de publication : texte + images + audio, publié immédiatement (PENDING) ou gardé en brouillon."""
     used = posts_last_hour(request.user)
-    if request.method == "POST" and used >= settings.SENSA_POSTS_PER_HOUR:
-        return render(request, "publications/rate_limited.html", {"limit": settings.SENSA_POSTS_PER_HOUR}, status=429)
+    as_draft = request.POST.get("action") == "draft"
+    if request.method == "POST" and not as_draft and used >= settings.SENSA_POSTS_PER_HOUR:
+        return rate_limited(request)
     form = PublicationForm(request.POST or None, request.FILES or None)
     if request.method == "POST" and form.is_valid():
-        publication = form.save_for(request.user)
+        publication = form.save_for(request.user, draft=as_draft)
+        if as_draft:
+            messages.success(request, "Brouillon enregistré : retrouvez-le dans l'onglet « Brouillons » de votre profil.")
+            return redirect(drafts_url(request.user))
         pipeline.launch(publication)
         messages.success(request, "C'est en ligne ! L'IA enrichit votre publication en arrière-plan.")
         return redirect("feed:home")
@@ -95,6 +118,12 @@ def edit(request, pk):
     if request.method == "POST" and form.is_valid():
         text_changed = "text" in form.changed_data
         form.save()
+        if publication.is_draft:
+            # Pas d'analyse IA avant la publication.
+            if request.POST.get("action") == "publish":
+                return publish_draft(request, publication)
+            messages.success(request, "Brouillon enregistré.")
+            return redirect(publication)
         if form.media_changed:
             # Nouveaux médias : toute l'analyse est refaite (descriptions, transcription, résumé, modération…).
             pipeline.launch(Publication.objects.get(pk=publication.pk))
@@ -106,7 +135,8 @@ def edit(request, pk):
         else:
             messages.success(request, "Publication modifiée.")
         return redirect(publication)
-    return render(request, "publications/edit.html", {"form": form, "post": publication})
+    cancel_url = drafts_url(request.user) if publication.is_draft else publication.get_absolute_url()
+    return render(request, "publications/edit.html", {"form": form, "post": publication, "cancel_url": cancel_url})
 
 
 @login_required

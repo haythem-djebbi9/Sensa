@@ -1,13 +1,13 @@
 {% extends "layouts/app.html" %}
 {% load sensa_tags %}
-{% block title %}Modifier la publication{% endblock %}
+{% block title %}{% if post.is_draft %}Modifier le brouillon{% else %}Modifier la publication{% endif %}{% endblock %}
 {% block content %}
 <main class="page narrow-page">
-  <a class="back-link" href="{{ post.get_absolute_url }}"><span class="back-arrow">←</span>Retour à la publication</a>
+  <a class="back-link" href="{{ cancel_url }}"><span class="back-arrow">←</span>{% if post.is_draft %}Retour aux brouillons{% else %}Retour à la publication{% endif %}</a>
   <header class="page-header">
     <div>
-      <span class="eyebrow">Modifier</span>
-      <h1>Modifier la publication</h1>
+      <span class="eyebrow">{% if post.is_draft %}Brouillon{% else %}Modifier{% endif %}</span>
+      <h1>{% if post.is_draft %}Terminer le brouillon{% else %}Modifier la publication{% endif %}</h1>
     </div>
   </header>
   <form class="card composer" method="post" enctype="multipart/form-data" novalidate>
@@ -16,7 +16,7 @@
       {% avatar user %}
       <div>
         <strong>{{ user.display_name }}</strong>
-        <span>Publiée le {{ post.created_at|date:"d/m/Y à H:i" }}</span>
+        <span>{% if post.is_draft %}Brouillon modifié le {{ post.updated_at|date:"d/m/Y à H:i" }}{% else %}Publiée le {{ post.created_at|date:"d/m/Y à H:i" }}{% endif %}</span>
       </div>
       <label class="sr-only" for="{{ form.visibility.id_for_label }}">Visibilité</label>
       {{ form.visibility }}
@@ -54,13 +54,23 @@
     <div class="ai-note">
       <span class="ai-note-icon">{% icon "spark" %}</span>
       <div>
-        <strong>Le contenu change, l'IA réanalyse</strong>
-        <p>Si vous modifiez le texte, les tags, la modération et les recommandations sont recalculés en arrière-plan. Si vous changez les images ou l'audio, toute l'analyse est refaite : descriptions, transcription et résumé compris.</p>
+        {% if post.is_draft %}
+          <strong>Visible par vous seul·e</strong>
+          <p>Ce brouillon n'apparaît nulle part sur Sensa. Dès que vous le publiez, l'IA ajoute les descriptions, la transcription et les tags, puis vérifie le contenu.</p>
+        {% else %}
+          <strong>Le contenu change, l'IA réanalyse</strong>
+          <p>Si vous modifiez le texte, les tags, la modération et les recommandations sont recalculés en arrière-plan. Si vous changez les images ou l'audio, toute l'analyse est refaite : descriptions, transcription et résumé compris.</p>
+        {% endif %}
       </div>
     </div>
     <div class="composer-actions">
-      <a class="btn btn-ghost" href="{{ post.get_absolute_url }}">Annuler</a>
-      <button type="submit" class="btn btn-primary">Enregistrer</button>
+      <a class="btn btn-ghost" href="{{ cancel_url }}">Annuler</a>
+      {% if post.is_draft %}
+        <button type="submit" class="btn btn-secondary">Enregistrer le brouillon</button>
+        <button type="submit" name="action" value="publish" class="btn btn-primary">Publier</button>
+      {% else %}
+        <button type="submit" class="btn btn-primary">Enregistrer</button>
+      {% endif %}
     </div>
   </form>
 </main>
