@@ -1,6 +1,9 @@
+from unittest import mock
+
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
 from channels.testing import WebsocketCommunicator
+from core.ai import AIError
 from django.contrib.auth.models import AnonymousUser
 from django.test import TestCase
 from django.urls import reverse
@@ -11,7 +14,7 @@ from publications.models import Publication
 
 from .ai import quick_tone
 from .consumers import NotificationConsumer
-from .models import Abonnement, Commentaire, Notification, Reaction
+from .models import Abonnement, Commentaire, CommentTranslation, ConversationInsight, Notification, Reaction
 from .services import group_name
 from .tasks import TONE_PRIORITY
 
@@ -107,6 +110,127 @@ class CommentTests(SensaTestCase):
         self.assertEqual(quick_tone("Dommage, c'est un peu ennuyeux")[0], "negative")
         self.assertEqual(quick_tone("À quelle heure ?")[0], "neutral")
         self.assertEqual(quick_tone("ta gueule")[0], "aggressive")
+
+    def test_ai_reply_suggestions_use_comment_context(self):
+        target = Commentaire.objects.create(publication=self.post, author=self.maya, text="Quel instrument avez-vous utilisé ?")
+        context = Commentaire.objects.create(publication=self.post, author=self.lina, text="Le morceau est magnifique.")
+        suggestions = ["Merci ! J'ai utilisé un piano.", "C'est un vieux piano droit.", "Je peux partager les détails."]
+        with mock.patch("social.views.ai.suggest_replies", return_value=(suggestions, "groq")) as suggest:
+            response = self.client.post(reverse("social:reply_suggestions", args=[target.pk]))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"suggestions": suggestions, "provider": "groq"})
+        suggest.assert_called_once_with(
+            "Chanson",
+            target.text,
+            [{"author": context.author.display_name, "text": context.text}],
+        )
+
+    def test_ai_reply_suggestions_report_provider_error(self):
+        target = Commentaire.objects.create(publication=self.post, author=self.maya, text="Merci")
+        with mock.patch("social.views.ai.suggest_replies", side_effect=AIError("provider unavailable")):
+            response = self.client.post(reverse("social:reply_suggestions", args=[target.pk]))
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(response.json(), {"error": "Suggestions indisponibles pour le moment."})
+
+    def test_ai_reply_suggestions_respect_post_visibility(self):
+        target = Commentaire.objects.create(publication=self.post, author=self.maya, text="Merci")
+        Publication.objects.filter(pk=self.post.pk).update(status=Publication.Status.BLOCKED)
+        response = self.client.post(reverse("social:reply_suggestions", args=[target.pk]))
+        self.assertEqual(response.status_code, 404)
+
+    def test_comments_can_reply_to_comments_and_notify_parent_author(self):
+        parent = Commentaire.objects.create(publication=self.post, author=self.maya, text="Question initiale")
+        with self.captureOnCommitCallbacks(execute=True):
+            response = self.client.post(self.url, {"text": "Voici ma réponse", "parent_id": parent.pk})
+        reply = Commentaire.objects.get(parent=parent)
+        self.assertEqual(reply.publication, self.post)
+        self.assertEqual(reply.author, self.lina)
+        self.assertRedirects(
+            response, f"{self.post.get_absolute_url()}#comment-{reply.pk}", fetch_redirect_response=False
+        )
+        self.assertTrue(Notification.objects.filter(recipient=self.maya, commentaire=reply).exists())
+        detail = self.client.get(self.post.get_absolute_url())
+        self.assertContains(detail, f'id="reply-form-{parent.pk}"')
+        self.assertContains(detail, f'name="parent_id" value="{parent.pk}"')
+        self.assertContains(
+            detail,
+            f'data-reply-trigger aria-expanded="false" aria-controls="reply-form-{parent.pk}"',
+        )
+        self.assertContains(detail, f'data-comment-username="{parent.author.username}"')
+        self.assertContains(detail, f'href="{parent.author.get_absolute_url()}">@{parent.author.username}</a></small>')
+
+    def test_nested_replies_keep_their_parent(self):
+        root = Commentaire.objects.create(publication=self.post, author=self.maya, text="Commentaire racine")
+        child = Commentaire.objects.create(publication=self.post, author=self.lina, parent=root, text="Réponse")
+        self.client.force_login(self.maya)
+        response = self.client.post(self.url, {"text": "Réponse imbriquée", "parent_id": child.pk})
+        nested = Commentaire.objects.get(text="Réponse imbriquée")
+        self.assertEqual(nested.parent, child)
+        self.assertRedirects(
+            response, f"{self.post.get_absolute_url()}#comment-{nested.pk}", fetch_redirect_response=False
+        )
+
+    def test_cannot_reply_to_comment_on_another_publication(self):
+        other_post = Publication.objects.create(author=self.maya, text="Autre post", status=Publication.Status.READY)
+        parent = Commentaire.objects.create(publication=other_post, author=self.maya, text="Autre conversation")
+        response = self.client.post(self.url, {"text": "Réponse hors sujet", "parent_id": parent.pk})
+        self.assertEqual(response.status_code, 404)
+        self.assertFalse(Commentaire.objects.filter(text="Réponse hors sujet").exists())
+
+    def test_comment_translation_is_saved_and_shown(self):
+        comment = Commentaire.objects.create(publication=self.post, author=self.lina, text="Bonjour à tous")
+        url = reverse("social:comment_translate", args=[comment.pk, "en"])
+        with mock.patch("social.views.ai.translate_comment", return_value=("Hello everyone", "groq")):
+            response = self.client.post(url)
+        self.assertRedirects(
+            response, f"{self.post.get_absolute_url()}#comment-{comment.pk}", fetch_redirect_response=False
+        )
+        translation = CommentTranslation.objects.get(comment=comment, language="en")
+        self.assertEqual(translation.text, "Hello everyone")
+        self.assertEqual(translation.provider, "groq")
+        self.assertContains(self.client.get(self.post.get_absolute_url()), "Hello everyone")
+
+    def test_comment_translation_reports_ai_errors(self):
+        comment = Commentaire.objects.create(publication=self.post, author=self.lina, text="Bonjour")
+        with mock.patch("social.views.ai.translate_comment", side_effect=AIError("service indisponible")):
+            response = self.client.post(reverse("social:comment_translate", args=[comment.pk, "fr"]))
+        self.assertRedirects(
+            response, f"{self.post.get_absolute_url()}#comment-{comment.pk}", fetch_redirect_response=False
+        )
+        self.assertFalse(CommentTranslation.objects.exists())
+        self.assertContains(self.client.get(self.post.get_absolute_url()), "Impossible de traduire le commentaire")
+
+    def test_conversation_summary_and_starters_are_generated_for_post_author(self):
+        Commentaire.objects.create(publication=self.post, author=self.lina, text="Très belle chanson")
+        self.client.force_login(self.maya)
+        url = reverse("social:conversation_insight", args=[self.post.pk])
+        generated = (
+            "Les lecteurs apprécient la chanson.",
+            ["Comment avez-vous composé cette chanson ?", "Quel instrument ?", "Où avez-vous enregistré ?"],
+            "claude",
+        )
+        with mock.patch("social.views.ai.summarize_conversation", return_value=generated) as summarize:
+            response = self.client.post(url)
+        self.assertRedirects(response, f"{self.post.get_absolute_url()}#commentaires", fetch_redirect_response=False)
+        insight = ConversationInsight.objects.get(publication=self.post)
+        self.assertEqual(insight.summary, generated[0])
+        self.assertEqual(insight.starters, generated[1])
+        self.assertEqual(insight.source_comment_count, 1)
+        summarize.assert_called_once()
+        self.assertContains(self.client.get(self.post.get_absolute_url()), generated[0])
+        self.assertContains(self.client.get(self.post.get_absolute_url()), generated[1][0])
+
+    def test_only_post_author_can_generate_conversation_insight(self):
+        Commentaire.objects.create(publication=self.post, author=self.lina, text="Belle chanson")
+        response = self.client.post(reverse("social:conversation_insight", args=[self.post.pk]))
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(ConversationInsight.objects.exists())
+
+    def test_conversation_insight_requires_comments(self):
+        self.client.force_login(self.maya)
+        response = self.client.post(reverse("social:conversation_insight", args=[self.post.pk]))
+        self.assertRedirects(response, f"{self.post.get_absolute_url()}#commentaires", fetch_redirect_response=False)
+        self.assertFalse(ConversationInsight.objects.exists())
 
     def test_delete_comment_permissions(self):
         comment = Commentaire.objects.create(publication=self.post, author=self.maya, text="Merci")
