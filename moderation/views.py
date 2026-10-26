@@ -64,6 +64,8 @@ def _queue_queryset():
     )
 
 
+
+
 def _filter_queue(queryset, key):
     if key == "signales":
         return queryset.filter(open_reports__gt=0)
