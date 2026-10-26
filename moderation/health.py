@@ -28,6 +28,10 @@ def _celery_check():
     return "ok", f"{len(replies)} worker(s) actif(s)"
 
 
+
+
+
+
 def _channels_check():
     backend = settings.CHANNEL_LAYERS["default"]["BACKEND"]
     if backend.endswith("InMemoryChannelLayer"):
