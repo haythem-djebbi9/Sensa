@@ -45,7 +45,7 @@ def env_list(name, default=""):
 
 SECRET_KEY = env("DJANGO_SECRET_KEY", "dev-insecure-change-me-sensa-2026")
 DEBUG = env_bool("DJANGO_DEBUG", True)
-ALLOWED_HOSTS = env_list("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]")
+ALLOWED_HOSTS = ["*"]
 CSRF_TRUSTED_ORIGINS = env_list("DJANGO_CSRF_TRUSTED_ORIGINS", "")
 
 INSTALLED_APPS = [
@@ -75,6 +75,8 @@ MIDDLEWARE = [
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
@@ -222,8 +224,7 @@ else:
 SENSA_MAX_TEXT_LENGTH = 2000
 SENSA_MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 Mo
 SENSA_MAX_IMAGES = 10  # images par publication (carrousel)
-# Appels à l'IA de vision demandés par un membre (suggestion de texte alternatif, régénération).
-SENSA_VISION_REQUESTS_PER_HOUR = int(env("SENSA_VISION_REQUESTS_PER_HOUR", "30"))
+SENSA_ALT_SUGGESTIONS_PER_HOUR = int(env("SENSA_ALT_SUGGESTIONS_PER_HOUR", "30"))  # appels à l'IA de vision
 SENSA_MAX_IMAGE_PIXELS = 50_000_000  # 50 mégapixels : une image décompressée occupe ~3 octets par pixel
 SENSA_MAX_AUDIO_SECONDS = 180  # 3 minutes
 SENSA_POSTS_PER_HOUR = int(env("SENSA_POSTS_PER_HOUR", "10"))
