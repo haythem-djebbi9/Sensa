@@ -15,7 +15,7 @@
     <div class="admin-nav">
       <span>Outils d'administration</span>
       <a href="{% url 'moderation:queue' %}" class="{% active 'moderation:queue' %}">{% icon "shield" %}<span>Modération</span></a>
-      <a href="{% url 'enrichment:monitor' %}" class="{% active 'enrichment:monitor' %}">{% icon "activity" %}<span>Pipeline IA</span></a>
+      <a href="{% url 'enrichment:monitor' %}" class="{% active 'enrichment:*' %}">{% icon "activity" %}<span>Pipeline IA</span></a>
       {% if user.is_admin_role %}
         <a href="{% url 'moderation:settings' %}" class="{% active 'moderation:settings' 'moderation:accounts' %}">{% icon "settings" %}<span>Paramètres</span></a>
       {% endif %}

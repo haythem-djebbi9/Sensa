@@ -9,6 +9,8 @@ Celery en mode « eager » et une couche Channels en mémoire.
 import os
 from pathlib import Path
 
+from celery.schedules import crontab
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 
@@ -207,6 +209,8 @@ CELERY_TASK_ROUTES = {
 # Celery Beat : le « chien de garde » relance les analyses bloquées toutes les 5 minutes.
 CELERY_BEAT_SCHEDULE = {
     "sensa-pipeline-watchdog": {"task": "enrichment.pipeline_watchdog", "schedule": 300.0},
+    # Digest IA de la semaine écoulée, chaque lundi à 8 h.
+    "sensa-weekly-digest": {"task": "enrichment.weekly_digest", "schedule": crontab(minute=0, hour=8, day_of_week=1)},
 }
 
 # --- Django Channels (notifications temps réel, module 2) --------------------

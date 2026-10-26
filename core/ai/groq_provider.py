@@ -102,7 +102,7 @@ def structured(prompt, schema, *, image=None, max_tokens=2048, system=None, temp
     return _extract_json(choice.message.content)
 
 
-def transcribe(filename, data, *, language=None, model=None):
+def transcribe(filename, data, *, language=None, model=None, prompt=None):
     """Transcription Whisper (verbose_json) : texte, langue ISO, segments, durée."""
     if not is_configured():
         raise AIUnavailable("GROQ_API_KEY n'est pas configurée.")
@@ -111,6 +111,9 @@ def transcribe(filename, data, *, language=None, model=None):
               "timestamp_granularities": ["segment"], "temperature": 0.0}
     if language:
         kwargs["language"] = language
+    if prompt:
+        # Vocabulaire du module 3 : aide Whisper à orthographier les noms propres.
+        kwargs["prompt"] = prompt[:800]
     started = time.monotonic()
     response = _wrap_errors(lambda: get_client().audio.transcriptions.create(**kwargs))
     latency = (time.monotonic() - started) * 1000

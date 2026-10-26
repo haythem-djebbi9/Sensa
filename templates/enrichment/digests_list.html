@@ -1,0 +1,42 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Digests IA{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Module 3 · Enrichissement IA asynchrone</span>
+      <h1>Digests IA</h1>
+      <p>Synthèses des tendances de la communauté rédigées par l'IA à partir des publications, des tags et des résumés. Un digest est généré automatiquement chaque lundi.</p>
+    </div>
+  </header>
+  {% include "enrichment/_tabs.html" %}
+
+  <form class="card form-card digest-form" method="post" action="{% url 'enrichment:digest_create' %}" novalidate>
+    {% csrf_token %}
+    <h2>Générer un digest</h2>
+    <div class="form-grid">
+      {% include "partials/field.html" with field=form.period_start %}
+      {% include "partials/field.html" with field=form.period_end %}
+    </div>
+    <div class="form-actions"><button type="submit" class="btn btn-primary">{% icon "spark" 16 %}Générer</button></div>
+  </form>
+
+  <div class="digest-grid">
+    {% for digest in page %}
+      <a class="card digest-card" href="{% url 'enrichment:digest_detail' digest.pk %}">
+        <span class="eyebrow">{{ digest.period_start|date:"d/m" }} → {{ digest.period_end|date:"d/m/Y" }}</span>
+        <h3>{{ digest.title|default:"Digest en préparation…" }}</h3>
+        <p>{{ digest.summary|truncatechars:180 }}</p>
+        <div class="digest-foot">
+          {% if digest.status == "DONE" %}{% badge "ready" "Prêt" %}{% elif digest.status == "FAILED" %}{% badge "failed" "Échec" %}{% else %}{% badge "analyzing" "En préparation" %}{% endif %}
+          <small class="muted">{{ digest.stats.posts|default:0 }} publication{{ digest.stats.posts|pluralize }} · {{ digest.provider|default:"—" }}</small>
+        </div>
+      </a>
+    {% empty %}
+      <div class="card empty-state" style="grid-column:1/-1">{% icon "list" 28 %}<strong>Aucun digest</strong><span>Générez le premier avec le formulaire ci-dessus.</span></div>
+    {% endfor %}
+  </div>
+  {% include "partials/pagination.html" %}
+</main>
+{% endblock %}

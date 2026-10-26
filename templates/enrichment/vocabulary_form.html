@@ -1,0 +1,27 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{% url 'enrichment:vocabulary' %}"><span class="back-arrow">←</span>Vocabulaire de transcription</a>
+  <header class="page-header"><div><span class="eyebrow">Vocabulaire de transcription</span><h1>{{ title }}</h1></div></header>
+  <form method="post" class="card form-card" novalidate>
+    {% csrf_token %}
+    {% include "partials/form_errors.html" %}
+    {% include "partials/field.html" with field=form.term %}
+    {% include "partials/field.html" with field=form.variants %}
+    <div class="form-grid">
+      {% include "partials/field.html" with field=form.category %}
+      <label class="switch-row" style="align-self:end">{{ form.is_active }}<span>{{ form.is_active.label|capfirst }}</span></label>
+    </div>
+    <div class="ai-note" style="margin-top:0">
+      <span class="ai-note-icon">{% icon "spark" %}</span>
+      <div><strong>Comment c'est utilisé</strong><p>Le terme est envoyé à Whisper pour l'aider à l'orthographier. Les variantes listées sont remplacées par le terme correct dans le texte et dans chaque segment horodaté.</p></div>
+    </div>
+    <div class="form-actions">
+      <a class="btn btn-ghost" href="{% url 'enrichment:vocabulary' %}">Annuler</a>
+      <button type="submit" class="btn btn-primary">Enregistrer</button>
+    </div>
+  </form>
+</main>
+{% endblock %}

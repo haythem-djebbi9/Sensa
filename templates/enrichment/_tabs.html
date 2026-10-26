@@ -1,0 +1,11 @@
+{% load sensa_tags %}
+<nav class="admin-filters module-tabs" aria-label="Outils du module d'enrichissement IA">
+  <a href="{% url 'enrichment:monitor' %}" class="{% active 'enrichment:monitor' 'enrichment:analysis_detail' css='admin-filter-active' %}">{% icon "activity" 15 %}Tableau de bord</a>
+  <a href="{% url 'enrichment:tags' %}" class="{% active 'enrichment:tags' 'enrichment:tag_detail' 'enrichment:tag_create' 'enrichment:tag_update' 'enrichment:tag_delete' css='admin-filter-active' %}">{% icon "hash" 15 %}Tags</a>
+  <a href="{% url 'enrichment:vocabulary' %}" class="{% active 'enrichment:vocabulary' 'enrichment:vocabulary_create' 'enrichment:vocabulary_update' 'enrichment:vocabulary_delete' css='admin-filter-active' %}">{% icon "mic" 15 %}Vocabulaire</a>
+  {% if user.is_admin_role %}
+    <a href="{% url 'enrichment:prompts' %}" class="{% active 'enrichment:prompts' 'enrichment:prompt_create' 'enrichment:prompt_update' 'enrichment:prompt_delete' css='admin-filter-active' %}">{% icon "edit" 15 %}Prompts</a>
+  {% endif %}
+  <a href="{% url 'enrichment:laboratory' %}" class="{% active 'enrichment:laboratory' css='admin-filter-active' %}">{% icon "spark" 15 %}Laboratoire</a>
+  <a href="{% url 'enrichment:digests' %}" class="{% active 'enrichment:digests' 'enrichment:digest_detail' 'enrichment:digest_delete' css='admin-filter-active' %}">{% icon "list" 15 %}Digests</a>
+</nav>

@@ -14,6 +14,15 @@
       <form method="post" action="{% url 'enrichment:retry_all_failed' %}"{% if failed_count %} data-confirm="Relancer les {{ failed_count }} analyse(s) en échec ?"{% endif %}>{% csrf_token %}<button type="submit" class="btn btn-primary"{% if not failed_count %} disabled{% endif %}>{% icon "refresh" 16 %}Relancer les échecs ({{ failed_count }})</button></form>
     </div>
   </header>
+  {% include "enrichment/_tabs.html" %}
+
+  {% if latest_digest %}
+    <a class="card digest-banner" href="{% url 'enrichment:digest_detail' latest_digest.pk %}">
+      {% icon "list" 18 %}
+      <span><strong>Dernier digest IA · {{ latest_digest.title }}</strong><small>{{ latest_digest.summary|truncatechars:150 }}</small></span>
+      {% icon "arrow" 18 %}
+    </a>
+  {% endif %}
 
   <div class="admin-metrics four">
     <div class="metric card">

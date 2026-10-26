@@ -1,0 +1,64 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags l10n %}
+{% block title %}Corriger la transcription{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{{ post.get_absolute_url }}#transcription"><span class="back-arrow">←</span>Retour à la publication</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Transcription · {{ audio.duration|duration }}</span>
+      <h1>Corriger la transcription</h1>
+      <p>Corrigez les passages mal compris par Whisper. Les horodatages sont conservés ; après l'enregistrement, les tags, le résumé, la modération et les recommandations sont recalculés.</p>
+    </div>
+  </header>
+
+  {% for error in errors %}<div class="alert alert-danger page-alert">{% icon "alert" %}<div>{{ error }}</div></div>{% endfor %}
+
+  {% include "partials/audio_player.html" with audio=audio transcript_id="segment-editor" %}
+
+  <form method="post" class="card form-card" style="margin-top:1rem">
+    {% csrf_token %}
+    <div class="segment-editor" id="segment-editor">
+      {% for row in rows %}
+        <label class="segment-row" data-start="{{ row.start|unlocalize }}">
+          <span class="segment-time">{{ row.start|duration }}</span>
+          <textarea name="segment" rows="2" maxlength="1000">{{ row.text }}</textarea>
+        </label>
+      {% endfor %}
+    </div>
+    <label class="field"><span>Note (facultatif)</span><input type="text" name="note" maxlength="200" placeholder="ex. Noms de lieux corrigés"></label>
+    <div class="form-actions">
+      <a class="btn btn-ghost" href="{{ post.get_absolute_url }}#transcription">Annuler</a>
+      <button type="submit" class="btn btn-primary">{% icon "check" 16 %}Enregistrer la correction</button>
+    </div>
+  </form>
+
+  {% if can_revert %}
+    <form method="post" action="{% url 'enrichment:transcription_revert' audio.pk %}" class="alert alert-info page-alert" style="margin-top:1rem" data-confirm="Restaurer la transcription produite par l'IA ?">
+      {% csrf_token %}
+      {% icon "refresh" %}
+      <div><strong>Revenir à la version de l'IA</strong> La transcription d'origine reste conservée et peut être restaurée à tout moment.
+        <div style="margin-top:.6rem"><button type="submit" class="btn btn-small btn-secondary">Restaurer la version IA</button></div>
+      </div>
+    </form>
+  {% endif %}
+
+  {% if history %}
+    <section class="card form-card" style="margin-top:1rem">
+      <h2>Historique des corrections</h2>
+      <ol class="pipeline-steps">
+        {% for item in history %}
+          <li class="step-{% if item.is_revert %}pending{% else %}done{% endif %}">
+            <span class="step-dot" aria-hidden="true">{% if item.is_revert %}{% icon "refresh" 14 %}{% else %}{% icon "edit" 14 %}{% endif %}</span>
+            <div class="step-body">
+              <strong>{% if item.is_revert %}Retour à la version IA{% else %}Correction{% endif %}{% if item.author %} par @{{ item.author.username }}{% endif %}</strong>
+              <small>{{ item.created_at|date:"d/m/Y H:i" }}{% if item.note %} · {{ item.note }}{% endif %}</small>
+              <small class="muted">Avant : « {{ item.text_before|truncatechars:110 }} »</small>
+            </div>
+          </li>
+        {% endfor %}
+      </ol>
+    </section>
+  {% endif %}
+</main>
+{% endblock %}

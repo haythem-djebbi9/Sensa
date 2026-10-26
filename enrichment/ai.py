@@ -28,16 +28,16 @@ LANGUAGE_NAMES = {"fr": "français", "en": "anglais", "ar": "arabe", "es": "espa
 
 # --- Transcription -------------------------------------------------------------
 
-def _groq_whisper(audio, language="", model=""):
+def _groq_whisper(audio, language="", model="", prompt=""):
     with audio.file.open("rb") as handle:
         data = handle.read()
     filename = os.path.basename(audio.file.name) or "audio.webm"
-    output = groq_provider.transcribe(filename, data, language=language or None, model=model or None)
+    output = groq_provider.transcribe(filename, data, language=language or None, model=model or None, prompt=prompt or None)
     output["provider"] = "groq-whisper"
     return output
 
 
-def _openai_whisper(audio, language=""):
+def _openai_whisper(audio, language="", prompt=""):
     """Whisper via l'API OpenAI (format verbose_json pour la langue et les segments)."""
     try:
         import openai
@@ -50,6 +50,8 @@ def _openai_whisper(audio, language=""):
     kwargs = {"model": settings.SENSA_WHISPER_API_MODEL, "file": (filename, data), "response_format": "verbose_json"}
     if language:
         kwargs["language"] = language
+    if prompt:
+        kwargs["prompt"] = prompt[:800]
     try:
         response = client.audio.transcriptions.create(**kwargs)
     except openai.AuthenticationError as exc:
@@ -84,7 +86,7 @@ def _local_audio_path(audio):
         return tmp.name, True
 
 
-def _whisper_local(audio, language=""):
+def _whisper_local(audio, language="", prompt=""):
     """Repli open source : faster-whisper, sinon openai-whisper (nécessite ffmpeg)."""
     global _local_model
     if not settings.SENSA_USE_LOCAL_MODELS:
@@ -97,7 +99,7 @@ def _whisper_local(audio, language=""):
             with _local_lock:
                 if _local_model is None:
                     _local_model = WhisperModel(settings.SENSA_WHISPER_LOCAL_MODEL, device="cpu", compute_type="int8")
-            segments, info = _local_model.transcribe(path, language=language or None)
+            segments, info = _local_model.transcribe(path, language=language or None, initial_prompt=prompt or None)
             segments = [{"start": s.start, "end": s.end, "text": s.text} for s in segments]
             detected = info.language
             provider = "faster-whisper-local"
@@ -111,7 +113,7 @@ def _whisper_local(audio, language=""):
             with _local_lock:
                 if _local_model is None:
                     _local_model = whisper.load_model(settings.SENSA_WHISPER_LOCAL_MODEL)
-            result = _local_model.transcribe(path, language=language or None)
+            result = _local_model.transcribe(path, language=language or None, initial_prompt=prompt or None)
             segments = [{"start": s["start"], "end": s["end"], "text": s["text"]} for s in result.get("segments", [])]
             detected = result.get("language", "")
             provider = "whisper-local"
@@ -123,13 +125,16 @@ def _whisper_local(audio, language=""):
             "model": settings.SENSA_WHISPER_LOCAL_MODEL}
 
 
-def transcribe(audio, *, last_attempt=True, language="", model=""):
-    """Transcrit un Audio : Whisper Groq, puis API OpenAI, puis Whisper local."""
+def transcribe(audio, *, last_attempt=True, language="", model="", prompt=""):
+    """Transcrit un Audio : Whisper Groq, puis API OpenAI, puis Whisper local.
+
+    `prompt` : vocabulaire du module 3 (noms propres) transmis à Whisper comme contexte.
+    """
     remote = []
     if groq_provider.is_configured():
-        remote.append(lambda: _groq_whisper(audio, language, model))
+        remote.append(lambda: _groq_whisper(audio, language, model, prompt))
     if settings.OPENAI_API_KEY:
-        remote.append(lambda: _openai_whisper(audio, language))
+        remote.append(lambda: _openai_whisper(audio, language, prompt))
     last_error = None
     for attempt in remote:
         try:
@@ -139,7 +144,7 @@ def transcribe(audio, *, last_attempt=True, language="", model=""):
             last_error = exc
     if last_error is not None and not last_attempt and not isinstance(last_error, AIUnavailable):
         raise last_error
-    return _whisper_local(audio, language)
+    return _whisper_local(audio, language, prompt)
 
 
 # --- Tags, thème et langue ------------------------------------------------------
@@ -176,24 +181,27 @@ TAGS_SCHEMA = {
 }
 
 
-def generate_tags(text, description="", transcription="", *, last_attempt=True, max_tags=5):
-    """Renvoie {author_tags, ai_tags: [(nom, confiance)], category, language, provider}."""
+def generate_tags(text, description="", transcription="", *, last_attempt=True, max_tags=5, prompt=None):
+    """Renvoie {author_tags, ai_tags: [(nom, confiance)], category, language, provider, prompt}.
+
+    `prompt` : version de PromptIA imposée (laboratoire) ; sinon la version active ou le défaut.
+    """
+    from . import prompts
     author_tags = extract_hashtags(text)
     corpus = "\n".join(part for part in (text, description, transcription) if part).strip()
-    result = {"author_tags": author_tags, "ai_tags": [], "category": "", "language": guess_language(corpus), "provider": "auteur"}
+    result = {"author_tags": author_tags, "ai_tags": [], "category": "", "language": guess_language(corpus),
+              "provider": "auteur", "prompt": ""}
     if not corpus:
         return result
 
     if llm.is_configured():
         try:
-            answer = llm.structured(
-                TAGS_PROMPT.format(
-                    max_tags=max_tags, categories=", ".join(CATEGORIES), text=text or "—",
-                    description=description or "—", transcription=transcription or "—",
-                ),
-                TAGS_SCHEMA,
-                max_tokens=1536,
+            rendered, version = prompts.render(
+                prompts.T.TAGS, prompt, max_tags=max_tags, categories=", ".join(CATEGORIES), text=text or "—",
+                description=description or "—", transcription=transcription or "—",
             )
+            result["prompt"] = version
+            answer = llm.structured(rendered, TAGS_SCHEMA, max_tokens=1536)
             ai_tags = []
             for item in answer.data.get("tags", []):
                 name = slug_tag(item.get("name", "") if isinstance(item, dict) else str(item))
@@ -261,15 +269,16 @@ def _first_sentences(text, limit=240):
     return summary or (text or "")[:limit].rstrip() + ("…" if len(text or "") > limit else "")
 
 
-def summarize(text, description="", transcription="", *, last_attempt=True):
-    """Renvoie {summary, keywords, sentiment, provider}."""
+def summarize(text, description="", transcription="", *, last_attempt=True, prompt=None):
+    """Renvoie {summary, keywords, sentiment, provider, prompt}."""
+    from . import prompts
+
     if llm.is_configured():
         try:
-            answer = llm.structured(
-                SUMMARY_PROMPT.format(text=text or "—", description=description or "—", transcription=transcription or "—"),
-                SUMMARY_SCHEMA,
-                max_tokens=1536,
+            rendered, version = prompts.render(
+                prompts.T.SUMMARY, prompt, text=text or "—", description=description or "—", transcription=transcription or "—"
             )
+            answer = llm.structured(rendered, SUMMARY_SCHEMA, max_tokens=1536)
             summary = (answer.data.get("summary") or "").strip()
             if not summary:
                 raise AIError("Résumé vide.")
@@ -278,6 +287,7 @@ def summarize(text, description="", transcription="", *, last_attempt=True):
                 "keywords": [str(k) for k in answer.data.get("keywords", [])][:5],
                 "sentiment": answer.data.get("sentiment", "neutral"),
                 "provider": answer.provider,
+                "prompt": version,
             }
         except (AIError, TypeError, ValueError) as exc:
             logger.warning("Résumé par l'API indisponible : %s", exc)
@@ -289,6 +299,7 @@ def summarize(text, description="", transcription="", *, last_attempt=True):
         "keywords": keywords(" ".join(part for part in (text, transcription) if part), limit=3),
         "sentiment": "neutral",
         "provider": "extrait-local",
+        "prompt": "",
     }
 
 
@@ -307,11 +318,17 @@ TRANSLATION_SCHEMA = {
 }
 
 
-def translate(text, target_language):
-    """Traduction par l'API (pas de repli local : sans fournisseur, l'analyse échoue)."""
+def translate(text, target_language, prompt=None):
+    """Traduction par l'API (pas de repli local : sans fournisseur, l'analyse échoue).
+
+    Renvoie (traduction, fournisseur, version du prompt).
+    """
+    from . import prompts
+
     language = LANGUAGE_NAMES.get(target_language, target_language)
-    answer = llm.structured(TRANSLATION_PROMPT.format(language=language, text=text), TRANSLATION_SCHEMA, max_tokens=3000)
+    rendered, version = prompts.render(prompts.T.TRANSLATION, prompt, language=language, text=text)
+    answer = llm.structured(rendered, TRANSLATION_SCHEMA, max_tokens=3000)
     translation = (answer.data.get("translation") or "").strip()
     if not translation:
         raise AIError("Traduction vide.")
-    return translation, answer.provider
+    return translation, answer.provider, version

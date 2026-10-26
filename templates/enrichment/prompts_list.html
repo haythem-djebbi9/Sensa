@@ -1,0 +1,65 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags %}
+{% block title %}Prompts IA{% endblock %}
+{% block content %}
+<main class="page admin-page">
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Module 3 · Enrichissement IA asynchrone</span>
+      <h1>Prompts IA versionnés</h1>
+      <p>Les instructions envoyées à l'IA pour chaque tâche. Une seule version active par tâche ; sans version active, le prompt par défaut est utilisé. Testez une version dans le laboratoire avant de l'activer.</p>
+    </div>
+  </header>
+  {% include "enrichment/_tabs.html" %}
+
+  {% for task in tasks %}
+    <section class="card settings-card prompt-card" aria-labelledby="task-{{ task.value }}">
+      <div class="settings-title">
+        <span class="settings-icon settings-ai">{% icon "spark" %}</span>
+        <div>
+          <h2 id="task-{{ task.value }}">{{ task.label }}</h2>
+          <p>Version utilisée : <strong>{% if task.active %}v{{ task.active.version }} · {{ task.active.name }}{% else %}prompt par défaut{% endif %}</strong> · variables : {% for name in task.variables %}<code>{{ "{" }}{{ name }}{{ "}" }}</code>{% if name in task.required %}*{% endif %} {% endfor %}</p>
+        </div>
+        <a class="btn btn-small btn-primary" href="{% url 'enrichment:prompt_create' %}?tache={{ task.value }}">{% icon "plus" 14 %}Nouvelle version</a>
+      </div>
+      <table class="compact-table">
+        <thead><tr><th>Version</th><th>Nom</th><th>Auteur</th><th>Modifiée</th><th>Statut</th><th><span class="sr-only">Actions</span></th></tr></thead>
+        <tbody>
+          <tr>
+            <td><strong>Défaut</strong></td><td>Prompt intégré au code</td><td>—</td><td>—</td>
+            <td>{% if not task.active %}{% badge "ready" "Active" %}{% else %}<span class="muted">—</span>{% endif %}</td>
+            <td>
+              {% if task.active %}
+                <form method="post" action="{% url 'enrichment:prompt_default' task.value %}">{% csrf_token %}<button type="submit" class="btn btn-small btn-secondary">Utiliser le défaut</button></form>
+              {% endif %}
+            </td>
+          </tr>
+          {% for prompt in task.versions %}
+            <tr>
+              <td><strong>v{{ prompt.version }}</strong></td>
+              <td>{{ prompt.name }}{% if prompt.notes %}<br><small class="muted">{{ prompt.notes|truncatechars:70 }}</small>{% endif %}</td>
+              <td>{% if prompt.created_by %}@{{ prompt.created_by.username }}{% else %}—{% endif %}</td>
+              <td>{{ prompt.updated_at|since }}</td>
+              <td>{% if prompt.is_active %}{% badge "ready" "Active" %}{% else %}<span class="muted">Inactive</span>{% endif %}</td>
+              <td>
+                <div class="table-actions">
+                  {% if not prompt.is_active %}
+                    <form method="post" action="{% url 'enrichment:prompt_activate' prompt.pk %}">{% csrf_token %}<button type="submit" class="btn btn-small btn-primary">Activer</button></form>
+                  {% endif %}
+                  <a class="btn btn-small btn-ghost" href="{% url 'enrichment:laboratory' %}?tache={{ task.value }}&prompt={{ prompt.pk }}">Tester</a>
+                  <a class="btn btn-small btn-secondary" href="{% url 'enrichment:prompt_update' prompt.pk %}">Modifier</a>
+                  <a class="btn btn-small btn-danger" href="{% url 'enrichment:prompt_delete' prompt.pk %}">Supprimer</a>
+                </div>
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <details class="chart-data">
+        <summary>Voir le prompt par défaut</summary>
+        <pre class="json-view">{{ task.default }}</pre>
+      </details>
+    </section>
+  {% endfor %}
+</main>
+{% endblock %}

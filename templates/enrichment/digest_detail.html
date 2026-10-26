@@ -1,0 +1,53 @@
+{% extends "layouts/app.html" %}
+{% load sensa_tags enrichment_tags %}
+{% block title %}{{ digest }}{% endblock %}
+{% block content %}
+<main class="page narrow-page">
+  <a class="back-link" href="{% url 'enrichment:digests' %}"><span class="back-arrow">←</span>Tous les digests</a>
+  <header class="page-header">
+    <div>
+      <span class="eyebrow">Digest IA · du {{ digest.period_start|date:"d/m/Y" }} au {{ digest.period_end|date:"d/m/Y" }}</span>
+      <h1>{{ digest.title|default:"Digest en préparation…" }}</h1>
+    </div>
+    <div class="table-actions">
+      <form method="post" action="{% url 'enrichment:digest_regenerate' digest.pk %}">{% csrf_token %}<button type="submit" class="btn btn-secondary">{% icon "refresh" 16 %}Régénérer</button></form>
+      <a class="btn btn-danger" href="{% url 'enrichment:digest_delete' digest.pk %}">{% icon "trash" 16 %}Supprimer</a>
+    </div>
+  </header>
+
+  {% if digest.status == "PENDING" %}
+    <div class="alert alert-ai" data-digest-pending>{% icon "spark" %}<div><strong>L'IA rédige la synthèse…</strong> Rechargez la page dans quelques secondes.</div></div>
+  {% elif digest.status == "FAILED" %}
+    <div class="alert alert-danger">{% icon "alert" %}<div><strong>La génération a échoué</strong>{{ digest.error }}</div></div>
+  {% else %}
+    <section class="summary-box" style="margin-top:0">
+      <div class="summary-head">{% badge "ai" "Synthèse IA" %}<span class="chip-soft">{{ digest.provider }}</span></div>
+      <p>{{ digest.summary }}</p>
+    </section>
+
+    {% if digest.highlights %}
+      <h2 class="section-title">Temps forts</h2>
+      <ol class="highlight-list">
+        {% for item in digest.highlights %}<li><strong>{{ item.theme }}</strong><span>{{ item.description }}</span></li>{% endfor %}
+      </ol>
+    {% endif %}
+
+    <div class="admin-metrics four" style="margin-top:1.2rem">
+      <div class="metric card"><span>Publications</span><strong>{{ digest.stats.posts }}</strong><small>prêtes sur la période</small></div>
+      <div class="metric card"><span>Audios</span><strong>{{ digest.stats.audios }}</strong><small>{{ digest.stats.audio_minutes }} min transcrites</small></div>
+      <div class="metric card"><span>Images</span><strong>{{ digest.stats.images }}</strong><small>décrites par l'IA</small></div>
+      <div class="metric card"><span>Langues</span><strong class="metric-small">{% for code, count in digest.stats.languages.items %}{{ code|language_label }}{% if not forloop.last %}, {% endif %}{% empty %}—{% endfor %}</strong><small>détectées</small></div>
+    </div>
+
+    {% if digest.top_tags %}
+      <h2 class="section-title">Tags les plus utilisés</h2>
+      <div class="chip-cloud">{% for tag in digest.top_tags %}<a href="{% url 'feed:tag' tag.name %}">#{{ tag.name }} <small>{{ tag.count }}{% if tag.ai %} · {{ tag.ai }} par l'IA{% endif %}</small></a>{% endfor %}</div>
+    {% endif %}
+    {% if digest.stats.categories %}
+      <h2 class="section-title">Thèmes</h2>
+      <div class="chip-cloud">{% for theme, count in digest.stats.categories.items %}<a href="#">{{ theme|category_label }} <small>{{ count }}</small></a>{% endfor %}</div>
+    {% endif %}
+  {% endif %}
+  <p class="muted" style="margin-top:1.4rem;font-size:.75rem">Créé le {{ digest.created_at|date:"d/m/Y H:i" }}{% if digest.created_by %} par @{{ digest.created_by.username }}{% else %} automatiquement{% endif %}.</p>
+</main>
+{% endblock %}

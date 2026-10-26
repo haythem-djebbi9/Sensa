@@ -189,6 +189,19 @@ Modèles locaux optionnels : `pip install -r requirements-ai-local.txt`.
 - **Commandes** : `reenrich --failed | --all | --publication <uuid> [--types tags,summary]`,
   `pipeline_watchdog`, `pipeline_stats --hours 24`.
 
+### Gestion (CRUD) et outils IA du module 3
+
+Accessibles depuis les onglets de la page *Pipeline IA* (`/ia/`), réservés aux modérateurs et administrateurs.
+
+| Écran | URL | Ce qu'il permet |
+|---|---|---|
+| **Tags** | `/ia/tags/` | Créer, modifier, supprimer, **interdire** un tag (plus jamais proposé par l'IA), **fusionner** deux tags ; statistiques d'usage (IA / auteur, confiance moyenne) et détection automatique des **doublons probables** |
+| **Vocabulaire de transcription** | `/ia/vocabulaire/` | Noms propres envoyés à Whisper comme contexte ; les variantes mal transcrites sont corrigées dans le texte et dans chaque segment horodaté |
+| **Prompts IA** (administrateurs) | `/ia/prompts/` | Versionner les prompts des tags, du résumé et de la traduction ; une seule version active par tâche, retour au prompt par défaut en un clic, validation des variables |
+| **Laboratoire IA** | `/ia/laboratoire/` | Tester une tâche (tags, résumé, traduction, ton, toxicité, description d'image, transcription) sur un texte ou un fichier, avec un prompt donné : résultat, fournisseur, modèle, jetons et latence |
+| **Digests IA** | `/ia/digests/` | Synthèse rédigée par l'IA d'une période (tendances, tags phares, temps forts, statistiques) ; générée automatiquement **chaque lundi à 8 h** par Celery Beat |
+| **Correction de transcription** | `/ia/audio/<id>/transcription/` | L'auteur ou un modérateur corrige les segments ; historique des corrections, retour à la version IA, puis tags, résumé, modération et embedding recalculés |
+
 ## Environnement « production » (PostgreSQL, Redis, MinIO)
 
 ```bash
@@ -224,11 +237,11 @@ Le guide PDF illustré se trouve dans [docs/Guide_utilisation_Sensa.pdf](docs/Gu
 .venv\Scripts\python manage.py test
 ```
 
-150 tests couvrent les six apps : rôles et permissions, validation des fichiers, limite de
+235 tests couvrent les six apps : rôles et permissions, validation des fichiers, limite de
 publication, carrousel d'images, modification des médias, republication, publications enregistrées,
 suggestion de texte alternatif, pipeline et relances (3 tentatives → FAILED), seuils de modération,
 signalements, notifications WebSocket, recherche, recommandations et tout le module 3
-(fournisseur Groq simulé, cache, journal des tentatives, chien de garde, sous-titres, traduction, tableau de bord). Les appels aux API
+(fournisseur Groq simulé, cache, journal des tentatives, chien de garde, sous-titres, traduction, tableau de bord, CRUD des tags, vocabulaire, prompts, laboratoire, digests, correction de transcription). Les appels aux API
 d'IA sont simulés : aucun test n'utilise le réseau.
 
 ## Arborescence
