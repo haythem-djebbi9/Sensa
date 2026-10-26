@@ -51,6 +51,27 @@ class MultipleImageField(forms.ImageField):
         return images
 
 
+class AltTextListInput(forms.TextInput):
+    def value_from_datadict(self, data, files, name):
+        return data.getlist(name) if hasattr(data, "getlist") else data.get(name)
+
+
+class AltTextListField(forms.Field):
+    """Un texte alternatif par image, dans l'ordre des images (champs « alt_text » répétés)."""
+
+    widget = AltTextListInput
+    max_length = Image._meta.get_field("alt_text").max_length
+
+    def to_python(self, value):
+        if isinstance(value, str):
+            value = [value]
+        return [(text or "").strip() for text in value or []]
+
+    def validate(self, value):
+        if any(len(text) > self.max_length for text in value):
+            raise forms.ValidationError(f"Un texte alternatif ne doit pas dépasser {self.max_length} caractères.")
+
+
 def measure_audio(audio):
     """Durée de l'audio en secondes, mesurée sur le fichier : celle annoncée par le navigateur est modifiable."""
     seconds = read_audio_duration(audio)
@@ -63,12 +84,7 @@ def measure_audio(audio):
 
 class PublicationForm(forms.ModelForm):
     image = MultipleImageField(label="Images", required=False)
-    alt_text = forms.CharField(
-        label="Texte alternatif",
-        required=False,
-        max_length=300,
-        widget=forms.TextInput(attrs={"placeholder": "Décrivez l'image — sinon l'IA s'en charge"}),
-    )
+    alt_text = AltTextListField(label="Textes alternatifs", required=False)
     audio = forms.FileField(
         label="Audio",
         required=False,
@@ -119,9 +135,9 @@ class PublicationForm(forms.ModelForm):
         publication.author = author
         publication.status = Publication.Status.PENDING
         publication.save()
+        alt_texts = self.cleaned_data.get("alt_text") or []
         for position, image in enumerate(self.cleaned_data.get("image") or []):
-            # Le texte alternatif saisi décrit la première image ; l'IA décrit les autres.
-            alt_text = self.cleaned_data.get("alt_text", "") if position == 0 else ""
+            alt_text = alt_texts[position] if position < len(alt_texts) else ""
             Image.objects.create(publication=publication, file=strip_image_metadata(image), alt_text=alt_text)
         audio = self.cleaned_data.get("audio")
         if audio:
@@ -130,7 +146,6 @@ class PublicationForm(forms.ModelForm):
 
 
 class PublicationEditForm(forms.ModelForm):
-    alt_text = forms.CharField(label="Texte alternatif de la première image", required=False, max_length=300)
     remove_images = forms.ModelMultipleChoiceField(
         label="Images à retirer", queryset=Image.objects.none(), required=False, widget=forms.CheckboxSelectMultiple
     )
@@ -152,10 +167,12 @@ class PublicationEditForm(forms.ModelForm):
         self.audio_seconds = 0.0
         self.media_changed = False
         self.fields["remove_images"].queryset = Image.objects.filter(publication=self.instance)
-        if self.images:
-            self.fields["alt_text"].initial = self.images[0].alt_text
-        else:
-            del self.fields["alt_text"]
+        for position, image in enumerate(self.images, start=1):
+            self.fields[f"alt_{image.pk}"] = forms.CharField(
+                label=f"Texte alternatif de l'image {position}", required=False, max_length=300, initial=image.alt_text,
+                widget=forms.Textarea(attrs={"rows": 3, "placeholder": "Décrivez l'image — sinon l'IA s'en charge"}),
+            )
+        if not self.images:
             del self.fields["remove_images"]
         if self.current_audio is None:
             del self.fields["remove_audio"]
@@ -203,7 +220,15 @@ class PublicationEditForm(forms.ModelForm):
             Audio.objects.create(publication=publication, file=new_audio, duration=self.audio_seconds)
         self.media_changed = bool(removed or self.cleaned_data.get("new_images") or new_audio
                                   or self.cleaned_data.get("remove_audio"))
-        if self.images and "alt_text" in self.changed_data and self.images[0] not in removed:
-            self.images[0].alt_text = self.cleaned_data.get("alt_text", "")
-            self.images[0].save(update_fields=["alt_text"])
+        for image in self.images:
+            if image not in removed and f"alt_{image.pk}" in self.changed_data:
+                image.alt_text = self.cleaned_data.get(f"alt_{image.pk}", "")
+                image.save(update_fields=["alt_text"])
         return publication
+
+    @property
+    def image_rows(self):
+        """Pour le gabarit : chaque image avec sa case « Retirer » et son champ de texte alternatif."""
+        checkboxes = {str(checkbox.data["value"]): checkbox for checkbox in self["remove_images"]}
+        return [{"image": image, "remove": checkboxes[str(image.pk)], "alt": self[f"alt_{image.pk}"]}
+                for image in self.images]

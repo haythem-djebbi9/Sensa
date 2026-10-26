@@ -56,10 +56,20 @@
     {{ form.audio.errors }}
 
     <div class="composer-options">
-      <div id="alt-field" data-suggest-url="{% url 'publications:suggest_alt_text' %}" {% if not form.alt_text.value and not form.image.errors %}hidden{% endif %}>
-        {% include "partials/field.html" with field=form.alt_text %}
-        <p class="alt-hint" data-alt-hint aria-live="polite" hidden>{% icon "spark" 14 %}<span data-alt-hint-text></span></p>
-      </div>
+      <fieldset class="alt-list" id="alt-field" data-suggest-url="{% url 'publications:suggest_alt_text' %}" {% if not form.alt_text.value and not form.image.errors %}hidden{% endif %}>
+        <legend>Textes alternatifs <small>(facultatif)</small></legend>
+        <div data-alt-rows>
+          <div class="alt-row" data-alt-row>
+            <img class="alt-thumb" alt="" data-alt-thumb hidden>
+            <label class="field">
+              <span data-alt-label>Texte alternatif</span>
+              <textarea name="alt_text" rows="3" maxlength="300" placeholder="Décrivez l'image — sinon l'IA s'en charge">{{ form.alt_text.value.0|default:'' }}</textarea>
+              <span class="alt-hint" data-alt-hint aria-live="polite" hidden>{% icon "spark" 14 %}<span data-alt-hint-text></span></span>
+            </label>
+          </div>
+        </div>
+        {{ form.alt_text.errors }}
+      </fieldset>
     </div>
 
     {% include "partials/form_errors.html" %}

@@ -73,16 +73,23 @@ class PublishTests(SensaTestCase):
     def test_carousel_of_three_images(self):
         colors = [(200, 40, 40), (40, 200, 40), (40, 40, 200)]
         files = [image_upload(f"photo{index}.png", color=color) for index, color in enumerate(colors)]
-        self.publish(self.client, {"text": "Ma journée en 3 photos", "alt_text": "Le port au matin"}, {"image": files})
+        alt_texts = ["Le port au matin", "", "La plage au coucher du soleil"]
+        self.publish(self.client, {"text": "Ma journée en 3 photos", "alt_text": alt_texts}, {"image": files})
         post = Publication.objects.get()
         images = list(post.images.all())
         self.assertEqual(len(images), 3)
-        self.assertEqual([image.alt_text for image in images], ["Le port au matin", "", ""])
+        self.assertEqual([image.alt_text for image in images], alt_texts)
         self.assertTrue(all(image.description_ia for image in images))
         self.assertEqual(post.analyses.filter(type=AnalyseIA.Type.DESCRIPTION).count(), 3)
         response = self.client.get(reverse("publications:card", args=[post.pk]))
         self.assertContains(response, "data-carousel")
         self.assertContains(response, "1/3")
+
+    def test_too_long_alt_text_rejected(self):
+        response = self.publish(self.client, {"text": "test", "alt_text": ["Court", "x" * 301]},
+                                {"image": [image_upload(), image_upload()]})
+        self.assertContains(response, "Un texte alternatif ne doit pas dépasser 300 caractères.")
+        self.assertFalse(Publication.objects.exists())
 
     @override_settings(SENSA_MAX_IMAGES=2)
     def test_too_many_images_rejected(self):
@@ -552,10 +559,17 @@ class EditMediaTests(SensaTestCase):
         self.assertContains(response, "2 images maximum par publication.")
         self.assertEqual(post.images.count(), 2)
 
-    def test_alt_text_of_first_image_still_editable(self):
-        post = self.create(image=[image_upload()])
-        self.edit(post, {"alt_text": "Le port de Bizerte"})
-        self.assertEqual(post.images.get().alt_text, "Le port de Bizerte")
+    def test_alt_text_editable_for_each_image(self):
+        post = self.create(image=[image_upload(), image_upload()])
+        first, second = post.images.all()
+        self.edit(post, {f"alt_{first.pk}": "Le port de Bizerte", f"alt_{second.pk}": "Le marché du dimanche"})
+        self.assertEqual([image.alt_text for image in post.images.all()], ["Le port de Bizerte", "Le marché du dimanche"])
+
+    def test_edit_page_has_one_alt_field_per_image(self):
+        post = self.create(image=[image_upload(), image_upload(), image_upload()])
+        response = self.client.get(reverse("publications:edit", args=[post.pk]))
+        for image in post.images.all():
+            self.assertContains(response, f'name="alt_{image.pk}"')
 
 
 class AltTextSuggestionTests(SensaTestCase):
